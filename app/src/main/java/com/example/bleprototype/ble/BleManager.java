@@ -35,6 +35,8 @@ public class BleManager {
     private BluetoothLeAdvertiser advertiser;
     private BluetoothLeScanner scanner;
     private Listener listener;
+    private AdvertiseCallback advertiseCallback;
+    private ScanCallback scanCallback;
 
     public interface Listener {
         void onPacketDiscovered(String deviceAddress, String payload);
@@ -56,6 +58,10 @@ public class BleManager {
         if (bluetoothAdapter == null) {
             return false;
         }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return false;
+        }
         return bluetoothAdapter.isEnabled();
     }
 
@@ -63,6 +69,14 @@ public class BleManager {
         if (!isBluetoothReady()) {
             if (listener != null) {
                 listener.onAdvertiseFailure("Bluetooth is disabled");
+            }
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+            if (listener != null) {
+                listener.onAdvertiseFailure("Missing BLUETOOTH_ADVERTISE permission");
             }
             return;
         }
@@ -94,7 +108,7 @@ public class BleManager {
                 .addServiceData(new ParcelUuid(PACKET_UUID), payload.getBytes(StandardCharsets.UTF_8))
                 .build();
 
-        advertiser.startAdvertising(settings, data, new AdvertiseCallback() {
+        advertiseCallback = new AdvertiseCallback() {
             @Override
             public void onStartSuccess(AdvertiseSettings settingsInEffect) {
                 super.onStartSuccess(settingsInEffect);
@@ -112,7 +126,9 @@ public class BleManager {
                     listener.onAdvertiseFailure("Advertising failed. Code=" + errorCode);
                 }
             }
-        });
+        };
+
+        advertiser.startAdvertising(settings, data, advertiseCallback);
     }
 
     public void startScanning() {
@@ -150,7 +166,7 @@ public class BleManager {
         List<ScanFilter> filters = new ArrayList<>();
         filters.add(filter);
 
-        scanner.startScan(filters, settings, new ScanCallback() {
+        scanCallback = new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, ScanResult result) {
                 super.onScanResult(callbackType, result);
@@ -158,11 +174,9 @@ public class BleManager {
                 if (device != null) {
                     String payload = "";
                     if (result.getScanRecord() != null && result.getScanRecord().getServiceData() != null) {
-                        for (UUID key : result.getScanRecord().getServiceData().keySet()) {
-                            byte[] data = result.getScanRecord().getServiceData().get(key);
-                            if (data != null) {
-                                payload = new String(data, StandardCharsets.UTF_8);
-                            }
+                        byte[] data = result.getScanRecord().getServiceData().get(new ParcelUuid(PACKET_UUID));
+                        if (data != null) {
+                            payload = new String(data, StandardCharsets.UTF_8);
                         }
                     }
 
@@ -180,28 +194,30 @@ public class BleManager {
                     listener.onScanFailure("Scan failed. Code=" + errorCode);
                 }
             }
-        });
+        };
+
+        scanner.startScan(filters, settings, scanCallback);
     }
 
     public void stopScanning() {
-        if (scanner != null) {
-            scanner.stopScan(new ScanCallback() {
-                @Override
-                public void onScanFailed(int errorCode) {
-                    super.onScanFailed(errorCode);
-                }
-            });
+        if (scanner != null && scanCallback != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+            scanner.stopScan(scanCallback);
+            scanCallback = null;
         }
     }
 
     public void stopAdvertising() {
-        if (advertiser != null) {
-            advertiser.stopAdvertising(new AdvertiseCallback() {
-                @Override
-                public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                    super.onStartSuccess(settingsInEffect);
-                }
-            });
+        if (advertiser != null && advertiseCallback != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+            advertiser.stopAdvertising(advertiseCallback);
+            advertiseCallback = null;
         }
     }
 }

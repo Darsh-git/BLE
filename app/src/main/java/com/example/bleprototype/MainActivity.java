@@ -103,6 +103,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+            log("Missing BLUETOOTH_ADVERTISE permission.");
+            return;
+        }
+
         if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
             log("BLE advertising not supported on this device.");
             return;
@@ -187,11 +193,9 @@ public class MainActivity extends AppCompatActivity {
             }
             String msg = "Found device: " + device.getAddress();
             if (record != null && record.getServiceData() != null) {
-                for (UUID key : record.getServiceData().keySet()) {
-                    byte[] data = record.getServiceData().get(key);
-                    if (data != null) {
-                        msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
-                    }
+                byte[] data = record.getServiceData().get(new ParcelUuid(PACKET_UUID));
+                if (data != null) {
+                    msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
                 }
             }
             log(msg);
@@ -222,6 +226,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean isBluetoothReady() {
         if (bluetoothAdapter == null) {
             log("Bluetooth adapter is null.");
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            log("Missing BLUETOOTH_CONNECT permission.");
             return false;
         }
         if (!bluetoothAdapter.isEnabled()) {
