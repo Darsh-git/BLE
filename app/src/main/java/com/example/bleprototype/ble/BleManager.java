@@ -29,12 +29,15 @@ public class BleManager {
     private static final String TAG = "BleManager";
     public static final UUID SERVICE_UUID = UUID.fromString("8f8b7d9c-4c2c-4704-b09b-4c7b1b6e82d7");
     public static final UUID PACKET_UUID = UUID.fromString("b178c1d0-9bf7-4bc0-b202-5ba6f7d3f6d1");
+    private static final int MANUFACTURER_ID = 0xFFFF;
 
     private final Context context;
     private final BluetoothAdapter bluetoothAdapter;
     private BluetoothLeAdvertiser advertiser;
     private BluetoothLeScanner scanner;
     private Listener listener;
+    private boolean isAdvertising = false;
+    private boolean isScanning = false;
 
     public interface Listener {
         void onPacketDiscovered(String deviceAddress, String payload);
@@ -67,6 +70,21 @@ public class BleManager {
             return;
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+            if (listener != null) {
+                listener.onAdvertiseFailure("Missing BLUETOOTH_ADVERTISE permission");
+            }
+            return;
+        }
+
+        if (isAdvertising) {
+            if (listener != null) {
+                listener.onAdvertiseFailure("Advertising already started");
+            }
+            return;
+        }
+
         if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
             if (listener != null) {
                 listener.onAdvertiseFailure("BLE advertising is not supported");
@@ -91,13 +109,14 @@ public class BleManager {
         AdvertiseData data = new AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
                 .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-                .addServiceData(new ParcelUuid(PACKET_UUID), payload.getBytes(StandardCharsets.UTF_8))
+                .addManufacturerData(MANUFACTURER_ID, payload.getBytes(StandardCharsets.UTF_8))
                 .build();
 
         advertiser.startAdvertising(settings, data, new AdvertiseCallback() {
             @Override
             public void onStartSuccess(AdvertiseSettings settingsInEffect) {
                 super.onStartSuccess(settingsInEffect);
+                isAdvertising = true;
                 Log.d(TAG, "Advertising started");
                 if (listener != null) {
                     listener.onAdvertiseSuccess();
@@ -107,6 +126,7 @@ public class BleManager {
             @Override
             public void onStartFailure(int errorCode) {
                 super.onStartFailure(errorCode);
+                isAdvertising = false;
                 Log.e(TAG, "Advertising failed: " + errorCode);
                 if (listener != null) {
                     listener.onAdvertiseFailure("Advertising failed. Code=" + errorCode);
@@ -127,6 +147,13 @@ public class BleManager {
                 ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
             if (listener != null) {
                 listener.onScanFailure("Missing BLUETOOTH_SCAN permission");
+            }
+            return;
+        }
+
+        if (isScanning) {
+            if (listener != null) {
+                listener.onScanFailure("Scanning already started");
             }
             return;
         }
@@ -157,13 +184,18 @@ public class BleManager {
                 BluetoothDevice device = result.getDevice();
                 if (device != null) {
                     String payload = "";
-                    if (result.getScanRecord() != null && result.getScanRecord().getServiceData() != null) {
-                        for (UUID key : result.getScanRecord().getServiceData().keySet()) {
-                            byte[] data = result.getScanRecord().getServiceData().get(key);
-                            if (data != null) {
-                                payload = new String(data, StandardCharsets.UTF_8);
-                            }
+                    if (result.getScanRecord() != null) {
+                        byte[] data = result.getScanRecord()
+                                .getManufacturerSpecificData(MANUFACTURER_ID);
+                        if (data != null && data.length > 0) {
+                            payload = new String(data, StandardCharsets.UTF_8);
                         }
+                    }
+
+                    if (payload.isEmpty()) {
+                        Log.d(TAG, "Ignoring device without packet service data: "
+                                + device.getAddress());
+                        return;
                     }
 
                     Log.d(TAG, "Discovered device: " + device.getAddress() + " payload=" + payload);
@@ -176,11 +208,13 @@ public class BleManager {
             @Override
             public void onScanFailed(int errorCode) {
                 super.onScanFailed(errorCode);
+                isScanning = false;
                 if (listener != null) {
                     listener.onScanFailure("Scan failed. Code=" + errorCode);
                 }
             }
         });
+        isScanning = true;
     }
 
     public void stopScanning() {

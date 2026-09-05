@@ -12,16 +12,21 @@ public class PacketManager {
         }
 
         String[] parts = rawPayload.split("\\|");
-        if (parts.length < 3) {
+        if (parts.length != 3) {
             throw new IllegalArgumentException("Invalid packet payload: " + rawPayload);
         }
 
         String packetId = parts[0];
         String type = parts[1];
-        int ttl = 5;
+        if (packetId.trim().isEmpty() || type.trim().isEmpty() || !parts[2].startsWith("TTL=")) {
+            throw new IllegalArgumentException("Invalid packet fields: " + rawPayload);
+        }
 
-        if (parts.length >= 3 && parts[2].startsWith("TTL=")) {
+        int ttl;
+        try {
             ttl = Integer.parseInt(parts[2].substring(4));
+        } catch (NumberFormatException exception) {
+            throw new IllegalArgumentException("Invalid TTL in packet: " + rawPayload, exception);
         }
 
         return new EmergencyPacket(packetId, type, ttl, System.currentTimeMillis(), 0.0, 0.0, "unknown");

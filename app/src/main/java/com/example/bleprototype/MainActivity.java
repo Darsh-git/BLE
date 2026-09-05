@@ -40,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "BLEPrototype";
     private static final UUID SERVICE_UUID = UUID.fromString("8f8b7d9c-4c2c-4704-b09b-4c7b1b6e82d7");
     private static final UUID PACKET_UUID = UUID.fromString("b178c1d0-9bf7-4bc0-b202-5ba6f7d3f6d1");
+    private static final int MANUFACTURER_ID = 0xFFFF;
 
     private static final int REQUEST_CODE = 1001;
 
@@ -47,6 +48,8 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothLeAdvertiser advertiser;
     private BluetoothLeScanner scanner;
     private TextView logView;
+    private boolean isAdvertising = false;
+    private boolean isScanning = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -103,6 +106,17 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
+            log("Missing BLUETOOTH_ADVERTISE permission.");
+            return;
+        }
+
+        if (isAdvertising) {
+            log("Advertising already started.");
+            return;
+        }
+
         if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
             log("BLE advertising not supported on this device.");
             return;
@@ -123,10 +137,11 @@ public class MainActivity extends AppCompatActivity {
         AdvertiseData data = new AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
                 .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-                .addServiceData(new ParcelUuid(PACKET_UUID), buildTestPacket().getBytes(StandardCharsets.UTF_8))
+                .addManufacturerData(MANUFACTURER_ID, buildTestPacket().getBytes(StandardCharsets.UTF_8))
                 .build();
 
         advertiser.startAdvertising(settings, data, advertiseCallback);
+        isAdvertising = true;
         log("Started BLE advertising for service " + SERVICE_UUID);
     }
 
@@ -134,12 +149,14 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onStartSuccess(AdvertiseSettings settingsInEffect) {
             super.onStartSuccess(settingsInEffect);
+            isAdvertising = true;
             log("Advertising started successfully.");
         }
 
         @Override
         public void onStartFailure(int errorCode) {
             super.onStartFailure(errorCode);
+            isAdvertising = false;
             log("Advertising failed. Error code: " + errorCode);
         }
     };
@@ -152,6 +169,11 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
             log("Missing BLUETOOTH_SCAN permission.");
+            return;
+        }
+
+        if (isScanning) {
+            log("Scanning already started.");
             return;
         }
 
@@ -173,6 +195,7 @@ public class MainActivity extends AppCompatActivity {
         filters.add(filter);
 
         scanner.startScan(filters, settings, scanCallback);
+        isScanning = true;
         log("Started BLE scanning for service " + SERVICE_UUID);
     }
 
@@ -186,13 +209,17 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             String msg = "Found device: " + device.getAddress();
-            if (record != null && record.getServiceData() != null) {
-                for (UUID key : record.getServiceData().keySet()) {
-                    byte[] data = record.getServiceData().get(key);
-                    if (data != null) {
-                        msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
-                    }
+            if (record != null) {
+                byte[] data = record.getManufacturerSpecificData(MANUFACTURER_ID);
+                if (data != null && data.length > 0) {
+                    msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
+                } else {
+                    log("Ignoring device without packet service data: " + device.getAddress());
+                    return;
                 }
+            } else {
+                log("Ignoring device without scan record: " + device.getAddress());
+                return;
             }
             log(msg);
         }
@@ -200,7 +227,15 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onScanFailed(int errorCode) {
             super.onScanFailed(errorCode);
-            log("Scan failed: " + errorCode);
+            isScanning = false;
+            if (errorCode == ScanCallback.SCAN_FAILED_ALREADY_STARTED) {
+                log("Scan failed: already started. Stopping and restarting scan.");
+                if (scanner != null) {
+                    scanner.stopScan(scanCallback);
+                }
+            } else {
+                log("Scan failed: " + errorCode);
+            }
         }
     };
 
@@ -210,7 +245,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         log("Sending test packet: " + buildTestPacket());
-        if (advertiser == null) {
+        if (!isAdvertising) {
             startAdvertising();
         }
     }
@@ -227,6 +262,11 @@ public class MainActivity extends AppCompatActivity {
         if (!bluetoothAdapter.isEnabled()) {
             log("Bluetooth is disabled. Please enable Bluetooth.");
             Toast.makeText(this, "Enable Bluetooth first.", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            log("Missing BLUETOOTH_CONNECT permission.");
             return false;
         }
         return true;
