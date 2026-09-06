@@ -6,44 +6,60 @@
     android:padding="16dp">
 
     <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="DisasterMesh - New Report"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="16dp" />
+
+    <EditText
+        android:id="@+id/etSender"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="BLE Relay Prototype"
-        android:textSize="24sp"
-        android:textStyle="bold" />
+        android:hint="Your Name"
+        android:inputType="textPersonName" />
+
+    <EditText
+        android:id="@+id/etDisasterType"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Disaster Type (e.g., Flood, Fire)"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/etDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Description / Details"
+        android:inputType="textMultiLine" />
+
+    <EditText
+        android:id="@+id/etLocation"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Location"
+        android:inputType="text" />
 
     <Button
-        android:id="@+id/btn_start_advertising"
+        android:id="@+id/btnSubmit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:text="Submit Report"
+        android:layout_marginTop="12dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Saved Reports:"
+        android:textStyle="bold"
         android:layout_marginTop="16dp"
-        android:text="Start Advertising" />
+        android:layout_marginBottom="8dp" />
 
-    <Button
-        android:id="@+id/btn_start_scanning"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Start Scanning" />
-
-    <Button
-        android:id="@+id/btn_send_packet"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="Send Test Packet" />
-
-    <ScrollView
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="16dp">
+        android:layout_weight="1" />
 
-        <TextView
-            android:id="@+id/logView"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Logs will appear here..."
-            android:textIsSelectable="true" />
-    </ScrollView>
 </LinearLayout>
