@@ -20,7 +20,6 @@ import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -39,7 +38,7 @@ public class BleManager {
     private ScanCallback scanCallback;
 
     public interface Listener {
-        void onPacketDiscovered(String deviceAddress, String payload);
+        void onPacketDiscovered(String deviceAddress, byte[] payload);
         void onScanFailure(String message);
         void onAdvertiseFailure(String message);
         void onAdvertiseSuccess();
@@ -65,7 +64,7 @@ public class BleManager {
         return bluetoothAdapter.isEnabled();
     }
 
-    public void startAdvertising(String payload) {
+    public void startAdvertising(byte[] payload) {
         if (!isBluetoothReady()) {
             if (listener != null) {
                 listener.onAdvertiseFailure("Bluetooth is disabled");
@@ -88,6 +87,13 @@ public class BleManager {
             return;
         }
 
+        if (payload == null || payload.length > 11) {
+            if (listener != null) {
+                listener.onAdvertiseFailure("BLE advertisement payload must be at most 11 bytes");
+            }
+            return;
+        }
+
         advertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
         if (advertiser == null) {
             if (listener != null) {
@@ -95,6 +101,7 @@ public class BleManager {
             }
             return;
         }
+        stopAdvertising();
 
         AdvertiseSettings settings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -102,10 +109,11 @@ public class BleManager {
                 .setConnectable(false)
                 .build();
 
+        // Keep only one 128-bit service-data entry: adding another 128-bit
+        // service UUID would exceed the 31-byte legacy advertising budget.
         AdvertiseData data = new AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
-                .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-                .addServiceData(new ParcelUuid(PACKET_UUID), payload.getBytes(StandardCharsets.UTF_8))
+                .addServiceData(new ParcelUuid(PACKET_UUID), payload)
                 .build();
 
         advertiseCallback = new AdvertiseCallback() {
@@ -154,9 +162,10 @@ public class BleManager {
             }
             return;
         }
+        stopScanning();
 
         ScanFilter filter = new ScanFilter.Builder()
-                .setServiceUuid(new ParcelUuid(SERVICE_UUID))
+                .setServiceData(new ParcelUuid(PACKET_UUID), null)
                 .build();
 
         ScanSettings settings = new ScanSettings.Builder()
@@ -172,16 +181,13 @@ public class BleManager {
                 super.onScanResult(callbackType, result);
                 BluetoothDevice device = result.getDevice();
                 if (device != null) {
-                    String payload = "";
+                    byte[] payload = null;
                     if (result.getScanRecord() != null && result.getScanRecord().getServiceData() != null) {
-                        byte[] data = result.getScanRecord().getServiceData().get(new ParcelUuid(PACKET_UUID));
-                        if (data != null) {
-                            payload = new String(data, StandardCharsets.UTF_8);
-                        }
+                        payload = result.getScanRecord().getServiceData().get(new ParcelUuid(PACKET_UUID));
                     }
 
-                    Log.d(TAG, "Discovered device: " + device.getAddress() + " payload=" + payload);
-                    if (listener != null) {
+                    Log.d(TAG, "Discovered device: " + device.getAddress());
+                    if (listener != null && payload != null) {
                         listener.onPacketDiscovered(device.getAddress(), payload);
                     }
                 }

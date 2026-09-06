@@ -64,7 +64,7 @@ public class PacketRepository extends SQLiteOpenHelper {
         values.put("longitude", packet.getLongitude());
         values.put("received_at", System.currentTimeMillis());
 
-        return db.insertWithOnConflict("packets", null, values, SQLiteDatabase.CONFLICT_REPLACE);
+        return db.insertWithOnConflict("packets", null, values, SQLiteDatabase.CONFLICT_IGNORE);
     }
 
     public List<EmergencyPacket> getAllPackets() {
@@ -86,5 +86,10 @@ public class PacketRepository extends SQLiteOpenHelper {
         }
         cursor.close();
         return packets;
+    }
+
+    public int removeExpiredPackets(long oldestTimestampMillis) {
+        return getWritableDatabase().delete("packets", "timestamp<?",
+                new String[]{String.valueOf(oldestTimestampMillis)});
     }
 }
