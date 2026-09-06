@@ -25,6 +25,12 @@ public class RelayManager {
         return packet;
     }
 
+    public void markSeen(String packetId) {
+        if (packetId != null) {
+            seenPacketIds.add(packetId);
+        }
+    }
+
     public EmergencyPacket decrementTtl(EmergencyPacket packet) {
         if (packet == null || packet.getTtl() <= 0) {
             return null;
