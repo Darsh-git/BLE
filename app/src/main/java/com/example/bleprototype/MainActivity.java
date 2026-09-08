@@ -1,200 +1,128 @@
 package com.example.bleprototype;
 
 import android.Manifest;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothManager;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.util.Log;
+import android.os.IBinder;
 import android.widget.Button;
 import android.widget.TextView;
-
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
-import com.example.bleprototype.ble.BleManager;
-import com.example.bleprototype.model.EmergencyPacket;
-import com.example.bleprototype.network.PacketManager;
-import com.example.bleprototype.network.RelayManager;
-import com.example.bleprototype.storage.PacketRepository;
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationServices;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+public class MainActivity extends AppCompatActivity implements BLENetworkService.ServiceLogCallback {
 
-/** A foreground-only demonstration of BLE store-and-forward relaying. */
-public class MainActivity extends AppCompatActivity implements BleManager.Listener {
-    private static final String TAG = "BLEPrototype";
-    private static final int REQUEST_CODE = 1001;
-    private static final int INITIAL_TTL = 5;
-    private static final long RELAY_MIN_DELAY_MS = 700;
-    private static final long RELAY_DELAY_JITTER_MS = 800;
+private static final int PERMISSION_REQUEST_CODE = 101;
+private TextView logView;
+private BLENetworkService bleService;
+private boolean isBound = false;
+private short localSequence = 0;
+private FusedLocationProviderClient fusedLocationClient;
 
-    private final PacketManager packetManager = new PacketManager();
-    private final RelayManager relayManager = new RelayManager();
-    private final Handler relayHandler = new Handler(Looper.getMainLooper());
-    private final Random random = new Random();
-
-    private BleManager bleManager;
-    private PacketRepository packetRepository;
-    private TextView logView;
-
+private final ServiceConnection serviceConnection = new ServiceConnection() {
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        logView = findViewById(R.id.logView);
-        packetRepository = new PacketRepository(this);
-
-        BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
-        bleManager = new BleManager(this, adapter);
-        bleManager.setListener(this);
-
-        Button startAdvertising = findViewById(R.id.btn_start_advertising);
-        Button startScanning = findViewById(R.id.btn_start_scanning);
-        Button sendPacket = findViewById(R.id.btn_send_packet);
-        startAdvertising.setOnClickListener(v -> advertiseNewPacket());
-        startScanning.setOnClickListener(v -> startScanning());
-        sendPacket.setOnClickListener(v -> advertiseNewPacket());
-
-        requestNeededPermissions();
+    public void onServiceConnected(ComponentName name, IBinder service) {
+        BLENetworkService.LocalBinder binder = (BLENetworkService.LocalBinder) service;
+        bleService = binder.getService();
+        bleService.setUiCallback(MainActivity.this);
+        isBound = true;
+        onLog("Connected to BLE Mesh Foreground Service.");
     }
 
-    private void requestNeededPermissions() {
-        List<String> missing = new ArrayList<>();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            addIfMissing(missing, Manifest.permission.BLUETOOTH_SCAN);
-            addIfMissing(missing, Manifest.permission.BLUETOOTH_ADVERTISE);
-            addIfMissing(missing, Manifest.permission.BLUETOOTH_CONNECT);
+    @Override
+    public void onServiceDisconnected(ComponentName name) {
+        isBound = false;
+        bleService = null;
+    }
+};
+
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_main);
+
+    fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
+
+    logView = findViewById(R.id.logView);
+    Button btnStartAdvertising = findViewById(R.id.btn_start_advertising);
+    Button btnSendPacket = findViewById(R.id.btn_send_packet);
+
+    checkAndRequestPermissions();
+
+    Intent intent = new Intent(this, BLENetworkService.class);
+    startService(intent);
+    bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE);
+
+    btnStartAdvertising.setOnClickListener(v -> sendReportWithLocation((byte) 1));
+    btnSendPacket.setOnClickListener(v -> sendReportWithLocation((byte) 9));
+}
+
+private void sendReportWithLocation(byte type) {
+    if (!isBound || bleService == null) return;
+
+    if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+        onLog("Location permission missing. Sending default coordinates.");
+        localSequence++;
+        bleService.sendReport(localSequence, type, 0.0f, 0.0f);
+        return;
+    }
+
+    fusedLocationClient.getLastLocation().addOnSuccessListener(this, location -> {
+        localSequence++;
+        if (location != null) {
+            float lat = (float) location.getLatitude();
+            float lon = (float) location.getLongitude();
+            onLog("Broadcasting alert with live GPS: " + lat + ", " + lon);
+            bleService.sendReport(localSequence, type, lat, lon);
         } else {
-            addIfMissing(missing, Manifest.permission.ACCESS_FINE_LOCATION);
+            onLog("GPS location unavailable. Sending default coordinates (0.0, 0.0).");
+            bleService.sendReport(localSequence, type, 0.0f, 0.0f);
         }
-        if (!missing.isEmpty()) {
-            ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), REQUEST_CODE);
-        }
-    }
+    });
+}
 
-    private void addIfMissing(List<String> permissions, String permission) {
-        if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-            permissions.add(permission);
+private void checkAndRequestPermissions() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                    Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_ADVERTISE,
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+            }, PERMISSION_REQUEST_CODE);
         }
-    }
-
-    private void startScanning() {
-        if (bleManager.isBluetoothReady()) {
-            bleManager.startScanning();
-            log("Scanning for emergency packets.");
-        } else {
-            log("Bluetooth is unavailable, disabled, or not permitted.");
-        }
-    }
-
-    private void advertiseNewPacket() {
-        if (!bleManager.isBluetoothReady()) {
-            log("Bluetooth is unavailable, disabled, or not permitted.");
-            return;
-        }
-        EmergencyPacket packet = new EmergencyPacket(packetManager.generatePacketId(), "MEDICAL", INITIAL_TTL,
-                System.currentTimeMillis(), 0.0, 0.0, "local");
-        packetRepository.savePacket(packet);
-        relayManager.markSeen(packet.getPacketId());
-        advertise(packet, "Created and advertising");
-    }
-
-    private void advertise(EmergencyPacket packet, String action) {
-        try {
-            bleManager.startAdvertising(packetManager.encodeForAdvertisement(packet));
-            log(action + " " + packet);
-        } catch (IllegalArgumentException exception) {
-            log("Could not advertise packet: " + exception.getMessage());
+    } else {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{
+                    Manifest.permission.ACCESS_FINE_LOCATION
+            }, PERMISSION_REQUEST_CODE);
         }
     }
+}
 
-    @Override
-    public void onPacketDiscovered(String deviceAddress, byte[] payload) {
-        try {
-            EmergencyPacket packet = packetManager.decodeAdvertisement(payload, deviceAddress);
-            if (!packetManager.validatePacket(packet)) {
-                log("Ignored invalid packet from " + deviceAddress);
-                return;
-            }
-            if (packetRepository.hasPacket(packet.getPacketId()) || relayManager.isDuplicate(packet.getPacketId())) {
-                log("Ignored duplicate packet " + packet.getPacketId());
-                return;
-            }
-            if (relayManager.receivePacket(packet) == null) {
-                return;
-            }
-            packetRepository.savePacket(packet);
-            log("Received and stored " + packet);
-            scheduleRelay(packet);
-        } catch (IllegalArgumentException exception) {
-            log("Ignored malformed BLE packet from " + deviceAddress + ": " + exception.getMessage());
-        }
-    }
+@Override
+public void onLog(String message) {
+    runOnUiThread(() -> logView.append("\n" + message));
+}
 
-    private void scheduleRelay(EmergencyPacket receivedPacket) {
-        EmergencyPacket forwardedPacket = relayManager.decrementTtl(receivedPacket);
-        if (!relayManager.shouldRelay(forwardedPacket)) {
-            log("Packet " + receivedPacket.getPacketId() + " reached TTL 0; not relaying.");
-            return;
-        }
-        long delay = RELAY_MIN_DELAY_MS + random.nextInt((int) RELAY_DELAY_JITTER_MS + 1);
-        relayHandler.postDelayed(() -> advertise(forwardedPacket, "Relaying after " + delay + " ms"), delay);
-        log("Scheduled relay of " + forwardedPacket.getPacketId() + " with TTL=" + forwardedPacket.getTtl());
+@Override
+protected void onDestroy() {
+    super.onDestroy();
+    if (isBound) {
+        unbindService(serviceConnection);
+        isBound = false;
     }
-
-    @Override
-    public void onScanFailure(String message) {
-        log(message);
-    }
-
-    @Override
-    public void onAdvertiseFailure(String message) {
-        log(message);
-    }
-
-    @Override
-    public void onAdvertiseSuccess() {
-        log("BLE advertising started.");
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CODE) {
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    log("Bluetooth permission was denied.");
-                    return;
-                }
-            }
-            log("Bluetooth permissions granted.");
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        relayHandler.removeCallbacksAndMessages(null);
-        bleManager.stopScanning();
-        bleManager.stopAdvertising();
-        packetRepository.close();
-        super.onDestroy();
-    }
-
-    private void log(String message) {
-        Log.d(TAG, message);
-        runOnUiThread(() -> {
-            String existing = logView.getText() == null ? "" : logView.getText().toString();
-            logView.setText(existing + "\n" + message);
-        });
-    }
+}
 }
