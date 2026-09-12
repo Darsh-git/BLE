@@ -17,7 +17,7 @@
         android:allowBackup="true"
         android:label="BLE Prototype"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar">
+        android:theme="@style/Theme.BLEPrototype">
         <activity
             android:name=".MainActivity"
             android:exported="true">
