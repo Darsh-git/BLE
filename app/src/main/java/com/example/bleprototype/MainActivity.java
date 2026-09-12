@@ -134,22 +134,61 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     private ArrayAdapter<String> createSpinnerAdapter(String[] values) {
-        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, values) {
-            @Override
-            public View getView(int position, View convertView, ViewGroup parent) {
-                TextView view = (TextView) super.getView(position, convertView, parent);
-                view.setTextColor(0xFF17212B);
-                return view;
-            }
 
-            @Override
-            public View getDropDownView(int position, View convertView, ViewGroup parent) {
-                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
-                view.setTextColor(0xFF17212B);
-                return view;
-            }
-        };
-    }
+    return new ArrayAdapter<String>(
+            this,
+            android.R.layout.simple_spinner_item,
+            values
+    ) {
+
+        @Override
+        public View getView(
+                int position,
+                View convertView,
+                ViewGroup parent) {
+
+            TextView view = (TextView) super.getView(
+                    position,
+                    convertView,
+                    parent
+            );
+
+            view.setTextColor(0xFF101828);
+            view.setTextSize(16);
+            view.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+            return view;
+        }
+
+        @Override
+        public View getDropDownView(
+                int position,
+                View convertView,
+                ViewGroup parent) {
+
+            TextView view = (TextView) super.getDropDownView(
+                    position,
+                    convertView,
+                    parent
+            );
+
+            view.setTextColor(0xFF101828);
+            view.setTextSize(16);
+            view.setGravity(android.view.Gravity.CENTER_VERTICAL);
+
+            view.setPadding(
+                    20,
+                    18,
+                    20,
+                    18
+            );
+
+            view.setBackgroundColor(0xFFFFFFFF);
+
+            return view;
+        }
+    };
+}
 
     private void toggleScanning(Button scanningButton) {
         if (scanning) {
