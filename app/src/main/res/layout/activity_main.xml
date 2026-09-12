@@ -29,24 +29,18 @@
         android:layout_marginTop="10dp"
         android:orientation="horizontal">
 
-        <EditText
+        <Spinner
             android:id="@+id/et_packet_type"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="Type"
-            android:inputType="text"
-            android:text="MEDICAL" />
+            android:layout_weight="1" />
 
-        <EditText
+        <Spinner
             android:id="@+id/et_packet_severity"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:layout_weight="1"
-            android:hint="Severity"
-            android:inputType="text"
-            android:text="MEDIUM" />
+            android:layout_weight="1" />
     </LinearLayout>
 
     <LinearLayout

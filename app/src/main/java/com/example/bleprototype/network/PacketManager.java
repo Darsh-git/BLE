@@ -14,8 +14,16 @@ public class PacketManager {
      * AD header.  This packet is deliberately kept to 10 bytes.
      */
     public static final int ENCODED_PACKET_SIZE = 10;
-    private static final byte TYPE_MEDICAL = 1;
-    private static final byte TYPE_OTHER = 127;
+    private static final int TYPE_MEDICAL = 1;
+    private static final int TYPE_FIRE = 2;
+    private static final int TYPE_FLOOD = 3;
+    private static final int TYPE_ACCIDENT = 4;
+    private static final int TYPE_EARTHQUAKE = 5;
+    private static final int TYPE_SHELTER = 6;
+    private static final int TYPE_OTHER = 7;
+    private static final int SEVERITY_LOW = 1;
+    private static final int SEVERITY_MEDIUM = 2;
+    private static final int SEVERITY_CRITICAL = 3;
 
     public EmergencyPacket decodePacket(String rawPayload) {
         if (rawPayload == null || rawPayload.isEmpty()) {
@@ -66,7 +74,8 @@ public class PacketManager {
 
         return ByteBuffer.allocate(ENCODED_PACKET_SIZE).order(ByteOrder.BIG_ENDIAN)
                 .putInt((int) packetId)
-                .put(typeToCode(packet.getType()))
+                .put((byte) ((typeToCode(packet.getType()) << 2)
+                    | severityToCode(packet.getSeverity())))
                 .put((byte) packet.getTtl())
                 .putInt((int) (packet.getTimestamp() / 1000L))
                 .array();
@@ -78,10 +87,13 @@ public class PacketManager {
         }
         ByteBuffer bytes = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN);
         String packetId = String.format(Locale.US, "%08X", bytes.getInt());
-        String type = codeToType(bytes.get());
+        int typeAndSeverity = Byte.toUnsignedInt(bytes.get());
+        String type = codeToType(typeAndSeverity >> 2);
+        String severity = codeToSeverity(typeAndSeverity & 0x03);
         int ttl = Byte.toUnsignedInt(bytes.get());
         long timestamp = Integer.toUnsignedLong(bytes.getInt()) * 1000L;
-        return new EmergencyPacket(packetId, type, ttl, timestamp, 0.0, 0.0, sourceAddress);
+        return new EmergencyPacket(packetId, type, severity, "Unknown", timestamp,
+            System.currentTimeMillis(), ttl, sourceAddress, 0, "PENDING");
     }
 
     public String generatePacketId() {
@@ -91,15 +103,79 @@ public class PacketManager {
     public boolean validatePacket(EmergencyPacket packet) {
         return packet != null && packet.getPacketId() != null
                 && packet.getPacketId().matches("[0-9A-Fa-f]{8}")
-                && packet.getType() != null && !packet.getType().trim().isEmpty()
+                && isSupportedType(packet.getType())
                 && packet.getTtl() >= 0 && packet.getTtl() <= 255;
     }
 
-    private byte typeToCode(String type) {
-        return "MEDICAL".equalsIgnoreCase(type) ? TYPE_MEDICAL : TYPE_OTHER;
+    public boolean isSupportedType(String type) {
+        return "MEDICAL".equalsIgnoreCase(type)
+                || "FIRE".equalsIgnoreCase(type)
+                || "FLOOD".equalsIgnoreCase(type)
+                || "ACCIDENT".equalsIgnoreCase(type)
+                || "EARTHQUAKE".equalsIgnoreCase(type)
+                || "SHELTER".equalsIgnoreCase(type)
+                || "OTHER".equalsIgnoreCase(type);
     }
 
-    private String codeToType(byte code) {
-        return code == TYPE_MEDICAL ? "MEDICAL" : "OTHER";
+    private int typeToCode(String type) {
+        if ("MEDICAL".equalsIgnoreCase(type)) {
+            return TYPE_MEDICAL;
+        }
+        if ("FIRE".equalsIgnoreCase(type)) {
+            return TYPE_FIRE;
+        }
+        if ("FLOOD".equalsIgnoreCase(type)) {
+            return TYPE_FLOOD;
+        }
+        if ("ACCIDENT".equalsIgnoreCase(type)) {
+            return TYPE_ACCIDENT;
+        }
+        if ("EARTHQUAKE".equalsIgnoreCase(type)) {
+            return TYPE_EARTHQUAKE;
+        }
+        if ("SHELTER".equalsIgnoreCase(type)) {
+            return TYPE_SHELTER;
+        }
+        return TYPE_OTHER;
+    }
+
+    private int severityToCode(String severity) {
+        if ("LOW".equalsIgnoreCase(severity)) {
+            return SEVERITY_LOW;
+        }
+        if ("CRITICAL".equalsIgnoreCase(severity)) {
+            return SEVERITY_CRITICAL;
+        }
+        return SEVERITY_MEDIUM;
+    }
+
+    private String codeToType(int code) {
+        switch (code) {
+            case TYPE_MEDICAL:
+                return "MEDICAL";
+            case TYPE_FIRE:
+                return "FIRE";
+            case TYPE_FLOOD:
+                return "FLOOD";
+            case TYPE_ACCIDENT:
+                return "ACCIDENT";
+            case TYPE_EARTHQUAKE:
+                return "EARTHQUAKE";
+            case TYPE_SHELTER:
+                return "SHELTER";
+            default:
+                return "OTHER";
+        }
+    }
+
+    private String codeToSeverity(int code) {
+        switch (code) {
+            case SEVERITY_LOW:
+                return "LOW";
+            case SEVERITY_CRITICAL:
+                return "CRITICAL";
+            default:
+                return "MEDIUM";
+        }
     }
 }

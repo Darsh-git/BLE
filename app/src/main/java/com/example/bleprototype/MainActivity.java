@@ -12,6 +12,8 @@ import android.os.Looper;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ArrayAdapter;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -50,8 +52,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private PacketAdapter packetAdapter;
     private TextView packetCountView;
     private TextView connectionStatusView;
-    private EditText packetTypeInput;
-    private EditText packetSeverityInput;
+    private Spinner packetTypeInput;
+    private Spinner packetSeverityInput;
     private boolean pendingOnly;
 
     @Override
@@ -63,6 +65,12 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         connectionStatusView = findViewById(R.id.tv_connection_status);
         packetTypeInput = findViewById(R.id.et_packet_type);
         packetSeverityInput = findViewById(R.id.et_packet_severity);
+        packetTypeInput.setAdapter(new ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_dropdown_item,
+            new String[]{"MEDICAL", "FIRE", "FLOOD", "ACCIDENT", "EARTHQUAKE", "SHELTER", "OTHER"}));
+        packetSeverityInput.setAdapter(new ArrayAdapter<>(this,
+            android.R.layout.simple_spinner_dropdown_item,
+            new String[]{"LOW", "MEDIUM", "CRITICAL"}));
         packetRepository = new PacketRepository(this);
 
         androidx.recyclerview.widget.RecyclerView recyclerView = findViewById(R.id.recyclerView);
@@ -137,12 +145,12 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
             log("Bluetooth is unavailable, disabled, or not permitted.");
             return;
         }
-        String type = packetTypeInput.getText().toString().trim();
-        String severity = packetSeverityInput.getText().toString().trim().toUpperCase();
-        if (type.isEmpty() ||
+        String type = packetTypeInput.getSelectedItem().toString();
+        String severity = packetSeverityInput.getSelectedItem().toString();
+        if (!packetManager.isSupportedType(type) ||
                 !("LOW".equals(severity) || "MEDIUM".equals(severity) || "CRITICAL".equals(severity)) ||
                 INITIAL_TTL < 1 || INITIAL_TTL > 255) {
-            Toast.makeText(this, "Enter an emergency type and choose LOW, MEDIUM, or CRITICAL", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Type: MEDICAL, FIRE, FLOOD, ACCIDENT, EARTHQUAKE, SHELTER, or OTHER", Toast.LENGTH_SHORT).show();
             return;
         }
 
