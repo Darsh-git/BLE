@@ -62,4 +62,29 @@
         android:layout_height="0dp"
         android:layout_weight="1" />
 
+    <Button
+        android:id="@+id/btn_start_advertising"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Advertising" />
+
+    <Button
+        android:id="@+id/btn_start_scanning"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start Scanning" />
+
+    <Button
+        android:id="@+id/btn_send_packet"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Send Test Packet" />
+
+    <TextView
+        android:id="@+id/logView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="BLE logs will appear here..."
+        android:textIsSelectable="true" />
+
 </LinearLayout>
