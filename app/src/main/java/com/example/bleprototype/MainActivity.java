@@ -11,7 +11,9 @@ import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -46,9 +48,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private BleManager bleManager;
     private PacketRepository packetRepository;
     private PacketAdapter packetAdapter;
-    private TextView logView;
     private TextView packetCountView;
     private TextView connectionStatusView;
+    private EditText packetTypeInput;
+    private EditText packetSeverityInput;
     private boolean pendingOnly;
 
     @Override
@@ -56,9 +59,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        logView = findViewById(R.id.logView);
         packetCountView = findViewById(R.id.tv_packet_count);
         connectionStatusView = findViewById(R.id.tv_connection_status);
+        packetTypeInput = findViewById(R.id.et_packet_type);
+        packetSeverityInput = findViewById(R.id.et_packet_severity);
         packetRepository = new PacketRepository(this);
 
         androidx.recyclerview.widget.RecyclerView recyclerView = findViewById(R.id.recyclerView);
@@ -133,8 +137,18 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
             log("Bluetooth is unavailable, disabled, or not permitted.");
             return;
         }
-        EmergencyPacket packet = new EmergencyPacket(packetManager.generatePacketId(), "MEDICAL", INITIAL_TTL,
-                System.currentTimeMillis(), 0.0, 0.0, "local");
+        String type = packetTypeInput.getText().toString().trim();
+        String severity = packetSeverityInput.getText().toString().trim().toUpperCase();
+        if (type.isEmpty() ||
+                !("LOW".equals(severity) || "MEDIUM".equals(severity) || "CRITICAL".equals(severity)) ||
+                INITIAL_TTL < 1 || INITIAL_TTL > 255) {
+            Toast.makeText(this, "Enter an emergency type and choose LOW, MEDIUM, or CRITICAL", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        EmergencyPacket packet = new EmergencyPacket(packetManager.generatePacketId(), type, severity,
+                "Unknown", now, now, INITIAL_TTL, "local", 0, "PENDING");
         databaseExecutor.execute(() -> {
             boolean isNew = packetRepository.saveIfNew(packet);
             runOnUiThread(() -> {
@@ -247,9 +261,5 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
 
     private void log(String message) {
         Log.d(TAG, message);
-        runOnUiThread(() -> {
-            String existing = logView.getText() == null ? "" : logView.getText().toString();
-            logView.setText(existing + "\n" + message);
-        });
     }
 }
