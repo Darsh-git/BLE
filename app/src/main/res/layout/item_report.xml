@@ -11,7 +11,7 @@
         android:id="@+id/tvType"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#17212B"
+        android:textColor="#000000"
         android:textSize="16sp"
         android:textStyle="bold" />
 
@@ -19,28 +19,28 @@
         android:id="@+id/tvSender"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#52606D"
+        android:textColor="#000000"
         android:textSize="12sp" />
 
     <TextView
         android:id="@+id/tvDescription"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#52606D"
+        android:textColor="#000000"
         android:textSize="12sp" />
 
     <TextView
         android:id="@+id/tvLocation"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#52606D"
+        android:textColor="#000000"
         android:textSize="12sp" />
 
     <TextView
         android:id="@+id/tvStatus"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="#13795B"
+        android:textColor="#000000"
         android:textSize="12sp"
         android:textStyle="bold" />
 
