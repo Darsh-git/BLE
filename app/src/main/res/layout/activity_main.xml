@@ -3,88 +3,134 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="#F7F8FA">
 
     <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="DisasterMesh - New Report"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:layout_marginBottom="16dp" />
-
-    <EditText
-        android:id="@+id/etSender"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Your Name"
-        android:inputType="textPersonName" />
-
-    <EditText
-        android:id="@+id/etDisasterType"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Disaster Type (e.g., Flood, Fire)"
-        android:inputType="text" />
-
-    <EditText
-        android:id="@+id/etDescription"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Description / Details"
-        android:inputType="textMultiLine" />
-
-    <EditText
-        android:id="@+id/etLocation"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Location"
-        android:inputType="text" />
-
-    <Button
-        android:id="@+id/btnSubmit"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Submit Report"
-        android:layout_marginTop="12dp" />
+        android:text="BLE Packet Monitor"
+        android:textColor="#17212B"
+        android:textSize="24sp"
+        android:textStyle="bold" />
 
     <TextView
-        android:layout_width="wrap_content"
+        android:id="@+id/tv_connection_status"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Saved Reports:"
-        android:textStyle="bold"
-        android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp" />
+        android:layout_marginTop="4dp"
+        android:text="Bluetooth ready • Monitoring idle"
+        android:textColor="#52606D"
+        android:textSize="14sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_start_scanning"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Start Scanning" />
+
+        <Button
+            android:id="@+id/btn_start_advertising"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="Advertise Test" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_filter_all"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="All Packets" />
+
+        <Button
+            android:id="@+id/btn_filter_pending"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:text="Pending Relays" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/tv_packet_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Packets"
+        android:textColor="#17212B"
+        android:textSize="16sp"
+        android:textStyle="bold" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_marginTop="6dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp" />
 
     <Button
-        android:id="@+id/btn_start_advertising"
+        android:id="@+id/btn_remove_expired"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Start Advertising" />
-
-    <Button
-        android:id="@+id/btn_start_scanning"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Start Scanning" />
-
-    <Button
-        android:id="@+id/btn_send_packet"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Send Test Packet" />
+        android:text="Remove Expired Packets" />
 
     <TextView
         android:id="@+id/logView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="64dp"
+        android:layout_marginTop="6dp"
+        android:background="#E9EDF1"
+        android:padding="8dp"
         android:text="BLE logs will appear here..."
-        android:textIsSelectable="true" />
+        android:textColor="#52606D"
+        android:textIsSelectable="true"
+        android:textSize="12sp" />
+
+    <EditText
+        android:id="@+id/etSender"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <EditText
+        android:id="@+id/etDisasterType"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <EditText
+        android:id="@+id/etDescription"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <EditText
+        android:id="@+id/etLocation"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
+
+    <Button
+        android:id="@+id/btnSubmit"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone" />
 
 </LinearLayout>

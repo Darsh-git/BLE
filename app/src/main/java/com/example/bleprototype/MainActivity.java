@@ -26,6 +26,8 @@ import com.example.bleprototype.storage.PacketRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** A foreground-only demonstration of BLE store-and-forward relaying. */
 public class MainActivity extends AppCompatActivity implements BleManager.Listener {
@@ -39,10 +41,15 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private final RelayManager relayManager = new RelayManager();
     private final Handler relayHandler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
+    private final ExecutorService databaseExecutor = Executors.newSingleThreadExecutor();
 
     private BleManager bleManager;
     private PacketRepository packetRepository;
+    private PacketAdapter packetAdapter;
     private TextView logView;
+    private TextView packetCountView;
+    private TextView connectionStatusView;
+    private boolean pendingOnly;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -50,7 +57,14 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         setContentView(R.layout.activity_main);
 
         logView = findViewById(R.id.logView);
+        packetCountView = findViewById(R.id.tv_packet_count);
+        connectionStatusView = findViewById(R.id.tv_connection_status);
         packetRepository = new PacketRepository(this);
+
+        androidx.recyclerview.widget.RecyclerView recyclerView = findViewById(R.id.recyclerView);
+        packetAdapter = new PacketAdapter(new ArrayList<>());
+        recyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
+        recyclerView.setAdapter(packetAdapter);
 
         BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
@@ -59,12 +73,29 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
 
         Button startAdvertising = findViewById(R.id.btn_start_advertising);
         Button startScanning = findViewById(R.id.btn_start_scanning);
-        Button sendPacket = findViewById(R.id.btn_send_packet);
+        Button allPackets = findViewById(R.id.btn_filter_all);
+        Button pendingPackets = findViewById(R.id.btn_filter_pending);
+        Button removeExpired = findViewById(R.id.btn_remove_expired);
         startAdvertising.setOnClickListener(v -> advertiseNewPacket());
         startScanning.setOnClickListener(v -> startScanning());
-        sendPacket.setOnClickListener(v -> advertiseNewPacket());
+        allPackets.setOnClickListener(v -> {
+            pendingOnly = false;
+            refreshPackets();
+        });
+        pendingPackets.setOnClickListener(v -> {
+            pendingOnly = true;
+            refreshPackets();
+        });
+        removeExpired.setOnClickListener(v -> databaseExecutor.execute(() -> {
+            int removed = packetRepository.removeExpiredPackets();
+            runOnUiThread(() -> {
+                log("Removed " + removed + " expired packet(s).");
+                refreshPackets();
+            });
+        }));
 
         requestNeededPermissions();
+        refreshPackets();
     }
 
     private void requestNeededPermissions() {
@@ -90,6 +121,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private void startScanning() {
         if (bleManager.isBluetoothReady()) {
             bleManager.startScanning();
+            connectionStatusView.setText("Bluetooth ready • Scanning for packets");
             log("Scanning for emergency packets.");
         } else {
             log("Bluetooth is unavailable, disabled, or not permitted.");
@@ -103,9 +135,16 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         }
         EmergencyPacket packet = new EmergencyPacket(packetManager.generatePacketId(), "MEDICAL", INITIAL_TTL,
                 System.currentTimeMillis(), 0.0, 0.0, "local");
-        packetRepository.savePacket(packet);
-        relayManager.markSeen(packet.getPacketId());
-        advertise(packet, "Created and advertising");
+        databaseExecutor.execute(() -> {
+            boolean isNew = packetRepository.saveIfNew(packet);
+            runOnUiThread(() -> {
+                if (isNew) {
+                    relayManager.markSeen(packet.getPacketId());
+                    refreshPackets();
+                }
+                advertise(packet, isNew ? "Created and advertising" : "Duplicate packet");
+            });
+        });
     }
 
     private void advertise(EmergencyPacket packet, String action) {
@@ -125,16 +164,20 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
                 log("Ignored invalid packet from " + deviceAddress);
                 return;
             }
-            if (packetRepository.hasPacket(packet.getPacketId()) || relayManager.isDuplicate(packet.getPacketId())) {
+            if (relayManager.isDuplicate(packet.getPacketId())) {
                 log("Ignored duplicate packet " + packet.getPacketId());
                 return;
             }
-            if (relayManager.receivePacket(packet) == null) {
-                return;
-            }
-            packetRepository.savePacket(packet);
-            log("Received and stored " + packet);
-            scheduleRelay(packet);
+            databaseExecutor.execute(() -> {
+                if (!packetRepository.saveIfNew(packet)) {
+                    log("Ignored duplicate packet " + packet.getPacketId());
+                    return;
+                }
+                relayManager.markSeen(packet.getPacketId());
+                log("Received and stored " + packet);
+                runOnUiThread(() -> refreshPackets());
+                scheduleRelay(packet);
+            });
         } catch (IllegalArgumentException exception) {
             log("Ignored malformed BLE packet from " + deviceAddress + ": " + exception.getMessage());
         }
@@ -186,8 +229,20 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         relayHandler.removeCallbacksAndMessages(null);
         bleManager.stopScanning();
         bleManager.stopAdvertising();
+        databaseExecutor.shutdown();
         packetRepository.close();
         super.onDestroy();
+    }
+
+    private void refreshPackets() {
+        databaseExecutor.execute(() -> {
+            List<EmergencyPacket> packets = pendingOnly
+                    ? packetRepository.getPendingRelays() : packetRepository.getAllPackets();
+            runOnUiThread(() -> {
+                packetAdapter.setPackets(packets);
+                packetCountView.setText((pendingOnly ? "Pending relays: " : "Packets: ") + packets.size());
+            });
+        });
     }
 
     private void log(String message) {

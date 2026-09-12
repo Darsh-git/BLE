@@ -10,9 +10,12 @@ import com.example.bleprototype.model.EmergencyPacket;
 
 import java.util.ArrayList;
 import java.util.List;
+
 public class PacketRepository extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "ble_packets.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
+    private static final long LOW_PRIORITY_RETENTION_MS = 24L * 60L * 60L * 1000L;
+    private static final long CRITICAL_RETENTION_MS = 7L * LOW_PRIORITY_RETENTION_MS;
 
     public PacketRepository(Context context) {
         super(context.getApplicationContext(), DATABASE_NAME, null, DATABASE_VERSION);
@@ -22,24 +25,37 @@ public class PacketRepository extends SQLiteOpenHelper {
     public void onCreate(SQLiteDatabase db) {
         db.execSQL(
                 "CREATE TABLE packets (" +
-                        "packet_id TEXT PRIMARY KEY, " +
-                        "type TEXT, " +
-                        "ttl INTEGER, " +
-                        "timestamp INTEGER, " +
-                        "latitude REAL, " +
-                        "longitude REAL, " +
-                        "received_at INTEGER" +
+                    "packet_id TEXT PRIMARY KEY NOT NULL, " +
+                    "type TEXT NOT NULL, " +
+                    "severity TEXT NOT NULL, " +
+                    "location TEXT, " +
+                    "created_at INTEGER NOT NULL, " +
+                    "received_at INTEGER NOT NULL, " +
+                    "ttl INTEGER NOT NULL, " +
+                    "source_device TEXT, " +
+                    "relay_count INTEGER NOT NULL DEFAULT 0, " +
+                    "status TEXT NOT NULL DEFAULT 'PENDING'" +
                         ")"
         );
     }
 
     @Override
     public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        db.execSQL("DROP TABLE IF EXISTS packets");
-        onCreate(db);
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE packets RENAME TO packets_legacy");
+            onCreate(db);
+            db.execSQL("INSERT OR IGNORE INTO packets " +
+                    "(packet_id, type, severity, location, created_at, received_at, ttl, source_device) " +
+                    "SELECT packet_id, type, 'MEDIUM', printf('%.5f,%.5f', latitude, longitude), " +
+                    "timestamp, received_at, ttl, 'unknown' FROM packets_legacy");
+            db.execSQL("DROP TABLE packets_legacy");
+        }
     }
 
-    public boolean hasPacket(String packetId) {
+    public synchronized boolean hasPacket(String packetId) {
+        if (packetId == null) {
+            return false;
+        }
         SQLiteDatabase db = getReadableDatabase();
         Cursor cursor = db.query("packets", new String[]{"packet_id"}, "packet_id=?",
                 new String[]{packetId}, null, null, null);
@@ -48,47 +64,80 @@ public class PacketRepository extends SQLiteOpenHelper {
         return exists;
     }
 
-    public long savePacket(EmergencyPacket packet) {
-        if (packet == null) {
-            return -1;
+    public synchronized boolean saveIfNew(EmergencyPacket packet) {
+        if (packet == null || packet.getPacketId() == null || packet.getTtl() <= 0) {
+            return false;
         }
 
         SQLiteDatabase db = getWritableDatabase();
         ContentValues values = new ContentValues();
         values.put("packet_id", packet.getPacketId());
         values.put("type", packet.getType());
+        values.put("severity", packet.getSeverity());
+        values.put("location", packet.getLocation());
+        values.put("created_at", packet.getCreatedAt());
+        values.put("received_at", packet.getReceivedAt() > 0
+                ? packet.getReceivedAt() : System.currentTimeMillis());
         values.put("ttl", packet.getTtl());
-        values.put("timestamp", packet.getTimestamp());
-        values.put("latitude", packet.getLatitude());
-        values.put("longitude", packet.getLongitude());
-        values.put("received_at", System.currentTimeMillis());
+        values.put("source_device", packet.getSourceDevice());
+        values.put("relay_count", packet.getRelayCount());
+        values.put("status", packet.getStatus());
 
-        return db.insertWithOnConflict("packets", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+        // The primary key and conflict policy make this check-and-save atomic.
+        return db.insertWithOnConflict("packets", null, values, SQLiteDatabase.CONFLICT_IGNORE) != -1;
     }
 
-    public List<EmergencyPacket> getAllPackets() {
+    public synchronized long savePacket(EmergencyPacket packet) {
+        return saveIfNew(packet) ? 1 : -1;
+    }
+
+    public synchronized List<EmergencyPacket> getPendingRelays() {
+        return readPackets("status=? AND ttl>0", new String[]{"PENDING"});
+    }
+
+    public synchronized void markRelayed(String packetId) {
+        if (packetId == null) {
+            return;
+        }
+        getWritableDatabase().execSQL(
+                "UPDATE packets SET status='RELAYED', relay_count=relay_count+1 WHERE packet_id=?",
+                new Object[]{packetId});
+    }
+
+    public synchronized int removeExpiredPackets() {
+        long now = System.currentTimeMillis();
+        return getWritableDatabase().delete("packets",
+                "(severity=? AND ? - created_at > ?) OR " +
+                        "(severity<>? AND ? - created_at > ?) OR ttl<=0",
+                new String[]{"CRITICAL", String.valueOf(now), String.valueOf(CRITICAL_RETENTION_MS),
+                        "CRITICAL", String.valueOf(now), String.valueOf(LOW_PRIORITY_RETENTION_MS)});
+    }
+
+    public synchronized List<EmergencyPacket> getAllPackets() {
+        return readPackets(null, null);
+    }
+
+    private List<EmergencyPacket> readPackets(String selection, String[] selectionArgs) {
         List<EmergencyPacket> packets = new ArrayList<>();
         SQLiteDatabase db = getReadableDatabase();
-        Cursor cursor = db.query("packets", null, null, null, null, null, "received_at DESC");
+        Cursor cursor = db.query("packets", null, selection, selectionArgs, null, null, "received_at DESC");
 
         while (cursor.moveToNext()) {
             EmergencyPacket packet = new EmergencyPacket(
                     cursor.getString(cursor.getColumnIndexOrThrow("packet_id")),
                     cursor.getString(cursor.getColumnIndexOrThrow("type")),
+                    cursor.getString(cursor.getColumnIndexOrThrow("severity")),
+                    cursor.getString(cursor.getColumnIndexOrThrow("location")),
+                    cursor.getLong(cursor.getColumnIndexOrThrow("created_at")),
+                    cursor.getLong(cursor.getColumnIndexOrThrow("received_at")),
                     cursor.getInt(cursor.getColumnIndexOrThrow("ttl")),
-                    cursor.getLong(cursor.getColumnIndexOrThrow("timestamp")),
-                    cursor.getDouble(cursor.getColumnIndexOrThrow("latitude")),
-                    cursor.getDouble(cursor.getColumnIndexOrThrow("longitude")),
-                    "db"
+                    cursor.getString(cursor.getColumnIndexOrThrow("source_device")),
+                    cursor.getInt(cursor.getColumnIndexOrThrow("relay_count")),
+                    cursor.getString(cursor.getColumnIndexOrThrow("status"))
             );
             packets.add(packet);
         }
         cursor.close();
         return packets;
-    }
-
-    public int removeExpiredPackets(long oldestTimestampMillis) {
-        return getWritableDatabase().delete("packets", "timestamp<?",
-                new String[]{String.valueOf(oldestTimestampMillis)});
     }
 }
