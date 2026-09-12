@@ -2,8 +2,11 @@ package com.example.bleprototype.network;
 
 import com.example.bleprototype.model.EmergencyPacket;
 
+import org.json.JSONObject;
+
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -49,6 +52,56 @@ public class PacketManager {
         }
 
         return new EmergencyPacket(packetId, type, ttl, System.currentTimeMillis(), 0.0, 0.0, "unknown");
+    }
+
+    public byte[] encodeGattPayload(EmergencyPacket packet) {
+        if (!validatePacket(packet)) {
+            throw new IllegalArgumentException("Cannot encode an invalid GATT packet");
+        }
+        JSONObject message = new JSONObject();
+        try {
+            message.put("packet_id", packet.getPacketId());
+            message.put("type", packet.getType());
+            message.put("severity", packet.getSeverity());
+            message.put("location", packet.getLocation());
+            message.put("created_at", packet.getCreatedAt());
+            message.put("received_at", packet.getReceivedAt() > 0 ? packet.getReceivedAt() : System.currentTimeMillis());
+            message.put("ttl", packet.getTtl());
+            message.put("source_device", packet.getSourceDevice());
+            message.put("relay_count", packet.getRelayCount());
+            message.put("status", packet.getStatus());
+            message.put("kind", "packet");
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Could not serialize packet message", exception);
+        }
+        return message.toString().getBytes(StandardCharsets.UTF_8);
+    }
+
+    public EmergencyPacket decodeTransportPayload(byte[] payload, String sourceAddress) {
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("Transport payload is empty");
+        }
+        if (payload.length == ENCODED_PACKET_SIZE) {
+            return decodeAdvertisement(payload, sourceAddress);
+        }
+        String json = new String(payload, StandardCharsets.UTF_8);
+        try {
+            JSONObject object = new JSONObject(json);
+            return new EmergencyPacket(
+                    object.optString("packet_id", UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.US)),
+                    object.optString("type", "OTHER"),
+                    object.optString("severity", "MEDIUM"),
+                    object.optString("location", "Unknown"),
+                    object.optLong("created_at", System.currentTimeMillis()),
+                    object.optLong("received_at", System.currentTimeMillis()),
+                    object.optInt("ttl", 1),
+                    object.optString("source_device", sourceAddress),
+                    object.optInt("relay_count", 0),
+                    object.optString("status", "PENDING")
+            );
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("Invalid GATT transport packet", exception);
+        }
     }
 
     public String encodePacket(EmergencyPacket packet) {

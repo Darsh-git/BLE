@@ -85,6 +85,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
         bleManager = new BleManager(this, adapter);
         bleManager.setListener(this);
+        bleManager.startGattServer();
 
         advertisingButton = findViewById(R.id.btn_start_advertising);
         Button scanningButton = findViewById(R.id.btn_start_scanning);
@@ -227,7 +228,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     @Override
     public void onPacketDiscovered(String deviceAddress, byte[] payload) {
         try {
-            EmergencyPacket packet = packetManager.decodeAdvertisement(payload, deviceAddress);
+            EmergencyPacket packet = packetManager.decodeTransportPayload(payload, deviceAddress);
             if (!packetManager.validatePacket(packet)) {
                 log("Ignored invalid packet from " + deviceAddress);
                 return;
@@ -258,7 +259,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
             return;
         }
         long delay = RELAY_MIN_DELAY_MS + random.nextInt((int) RELAY_DELAY_JITTER_MS + 1);
-        relayHandler.postDelayed(() -> advertise(forwardedPacket, "Relaying after " + delay + " ms"), delay);
+        relayHandler.postDelayed(() -> {
+            bleManager.relayToConnectedPeers(forwardedPacket);
+            advertise(forwardedPacket, "Relaying after " + delay + " ms");
+        }, delay);
         log("Scheduled relay of " + forwardedPacket.getPacketId() + " with TTL=" + forwardedPacket.getTtl());
     }
 
@@ -293,6 +297,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
                     return;
                 }
             }
+            bleManager.startGattServer();
             log("Bluetooth permissions granted.");
         }
     }
@@ -302,6 +307,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         relayHandler.removeCallbacksAndMessages(null);
         bleManager.stopScanning();
         bleManager.stopAdvertising();
+        bleManager.stopGattServer();
         databaseExecutor.shutdown();
         packetRepository.close();
         super.onDestroy();
