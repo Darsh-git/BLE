@@ -2,53 +2,47 @@ package com.example.bleprototype;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothGatt;
-import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.le.AdvertiseCallback;
-import android.bluetooth.le.AdvertiseData;
-import android.bluetooth.le.AdvertiseSettings;
-import android.bluetooth.le.BluetoothLeAdvertiser;
-import android.bluetooth.le.BluetoothLeScanner;
-import android.bluetooth.le.ScanCallback;
-import android.bluetooth.le.ScanFilter;
-import android.bluetooth.le.ScanRecord;
-import android.bluetooth.le.ScanResult;
-import android.bluetooth.le.ScanSettings;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
-import android.os.ParcelUuid;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
-import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
-import java.nio.charset.StandardCharsets;
+import com.example.bleprototype.ble.BleManager;
+import com.example.bleprototype.model.EmergencyPacket;
+import com.example.bleprototype.network.PacketManager;
+import com.example.bleprototype.network.RelayManager;
+import com.example.bleprototype.storage.PacketRepository;
+
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
+import java.util.Random;
 
-public class MainActivity extends AppCompatActivity {
+/** A foreground-only demonstration of BLE store-and-forward relaying. */
+public class MainActivity extends AppCompatActivity implements BleManager.Listener {
     private static final String TAG = "BLEPrototype";
-    private static final UUID SERVICE_UUID = UUID.fromString("8f8b7d9c-4c2c-4704-b09b-4c7b1b6e82d7");
-    private static final UUID PACKET_UUID = UUID.fromString("b178c1d0-9bf7-4bc0-b202-5ba6f7d3f6d1");
-
     private static final int REQUEST_CODE = 1001;
+    private static final int INITIAL_TTL = 5;
+    private static final long RELAY_MIN_DELAY_MS = 700;
+    private static final long RELAY_DELAY_JITTER_MS = 800;
 
-    private BluetoothAdapter bluetoothAdapter;
-    private BluetoothLeAdvertiser advertiser;
-    private BluetoothLeScanner scanner;
+    private final PacketManager packetManager = new PacketManager();
+    private final RelayManager relayManager = new RelayManager();
+    private final Handler relayHandler = new Handler(Looper.getMainLooper());
+    private final Random random = new Random();
+
+    private BleManager bleManager;
+    private PacketRepository packetRepository;
     private TextView logView;
-    private boolean isAdvertising = false;
-    private boolean isScanning = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,211 +50,144 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         logView = findViewById(R.id.logView);
+        packetRepository = new PacketRepository(this);
+
+        BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        bleManager = new BleManager(this, adapter);
+        bleManager.setListener(this);
 
         Button startAdvertising = findViewById(R.id.btn_start_advertising);
         Button startScanning = findViewById(R.id.btn_start_scanning);
         Button sendPacket = findViewById(R.id.btn_send_packet);
-
-        startAdvertising.setOnClickListener(v -> startAdvertising());
+        startAdvertising.setOnClickListener(v -> advertiseNewPacket());
         startScanning.setOnClickListener(v -> startScanning());
-        sendPacket.setOnClickListener(v -> sendPacket());
-
-        setupBluetooth();
-    }
-
-    private void setupBluetooth() {
-        BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        if (manager != null) {
-            bluetoothAdapter = manager.getAdapter();
-        }
-
-        if (bluetoothAdapter == null) {
-            log("Bluetooth not available on this device.");
-            return;
-        }
+        sendPacket.setOnClickListener(v -> advertiseNewPacket());
 
         requestNeededPermissions();
     }
 
     private void requestNeededPermissions() {
-        List<String> permissions = new ArrayList<>();
+        List<String> missing = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            permissions.add(Manifest.permission.BLUETOOTH_SCAN);
-            permissions.add(Manifest.permission.BLUETOOTH_ADVERTISE);
-            permissions.add(Manifest.permission.BLUETOOTH_CONNECT);
+            addIfMissing(missing, Manifest.permission.BLUETOOTH_SCAN);
+            addIfMissing(missing, Manifest.permission.BLUETOOTH_ADVERTISE);
+            addIfMissing(missing, Manifest.permission.BLUETOOTH_CONNECT);
+        } else {
+            addIfMissing(missing, Manifest.permission.ACCESS_FINE_LOCATION);
         }
-        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-
-        for (String permission : permissions) {
-            if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), REQUEST_CODE);
-                return;
-            }
+        if (!missing.isEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), REQUEST_CODE);
         }
     }
 
-    private void startAdvertising() {
-        if (!isBluetoothReady()) {
-            return;
+    private void addIfMissing(List<String> permissions, String permission) {
+        if (ActivityCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+            permissions.add(permission);
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE) != PackageManager.PERMISSION_GRANTED) {
-            log("Missing BLUETOOTH_ADVERTISE permission.");
-            return;
-        }
-
-        if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
-            log("BLE advertising not supported on this device.");
-            return;
-        }
-
-        advertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
-        if (advertiser == null) {
-            log("Could not get BluetoothLeAdvertiser.");
-            return;
-        }
-
-        AdvertiseSettings settings = new AdvertiseSettings.Builder()
-                .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
-                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM)
-                .setConnectable(false)
-                .build();
-
-        AdvertiseData data = new AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
-                .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-            .addServiceData(new ParcelUuid(PACKET_UUID), buildTestPacket().getBytes(StandardCharsets.UTF_8))
-                .build();
-
-        advertiser.startAdvertising(settings, data, advertiseCallback);
-        isAdvertising = true;
-        log("Started BLE advertising for service " + SERVICE_UUID);
     }
-
-    private final AdvertiseCallback advertiseCallback = new AdvertiseCallback() {
-        @Override
-        public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-            super.onStartSuccess(settingsInEffect);
-            isAdvertising = true;
-            log("Advertising started successfully.");
-        }
-
-        @Override
-        public void onStartFailure(int errorCode) {
-            super.onStartFailure(errorCode);
-            isAdvertising = false;
-            log("Advertising failed. Error code: " + errorCode);
-        }
-    };
 
     private void startScanning() {
-        if (!isBluetoothReady()) {
-            return;
+        if (bleManager.isBluetoothReady()) {
+            bleManager.startScanning();
+            log("Scanning for emergency packets.");
+        } else {
+            log("Bluetooth is unavailable, disabled, or not permitted.");
         }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
-            log("Missing BLUETOOTH_SCAN permission.");
-            return;
-        }
-
-        if (isScanning) {
-            log("Scanning already started.");
-            return;
-        }
-
-        scanner = bluetoothAdapter.getBluetoothLeScanner();
-        if (scanner == null) {
-            log("Could not get BluetoothLeScanner.");
-            return;
-        }
-
-        ScanFilter filter = new ScanFilter.Builder()
-                .setServiceUuid(new ParcelUuid(SERVICE_UUID))
-                .build();
-
-        ScanSettings settings = new ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-                .build();
-
-        List<ScanFilter> filters = new ArrayList<>();
-        filters.add(filter);
-
-        scanner.startScan(filters, settings, scanCallback);
-        isScanning = true;
-        log("Started BLE scanning for service " + SERVICE_UUID);
     }
 
-    private final ScanCallback scanCallback = new ScanCallback() {
-        @Override
-        public void onScanResult(int callbackType, ScanResult result) {
-            super.onScanResult(callbackType, result);
-            BluetoothDevice device = result.getDevice();
-            ScanRecord record = result.getScanRecord();
-            if (device == null) {
+    private void advertiseNewPacket() {
+        if (!bleManager.isBluetoothReady()) {
+            log("Bluetooth is unavailable, disabled, or not permitted.");
+            return;
+        }
+        EmergencyPacket packet = new EmergencyPacket(packetManager.generatePacketId(), "MEDICAL", INITIAL_TTL,
+                System.currentTimeMillis(), 0.0, 0.0, "local");
+        packetRepository.savePacket(packet);
+        relayManager.markSeen(packet.getPacketId());
+        advertise(packet, "Created and advertising");
+    }
+
+    private void advertise(EmergencyPacket packet, String action) {
+        try {
+            bleManager.startAdvertising(packetManager.encodeForAdvertisement(packet));
+            log(action + " " + packet);
+        } catch (IllegalArgumentException exception) {
+            log("Could not advertise packet: " + exception.getMessage());
+        }
+    }
+
+    @Override
+    public void onPacketDiscovered(String deviceAddress, byte[] payload) {
+        try {
+            EmergencyPacket packet = packetManager.decodeAdvertisement(payload, deviceAddress);
+            if (!packetManager.validatePacket(packet)) {
+                log("Ignored invalid packet from " + deviceAddress);
                 return;
             }
-            String msg = "Found device: " + device.getAddress();
-            if (record != null && record.getServiceData() != null) {
-                byte[] data = record.getServiceData().get(new ParcelUuid(PACKET_UUID));
-                if (data != null) {
-                    msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
-                }
-            } else {
-                log("Ignoring device without scan record: " + device.getAddress());
+            if (packetRepository.hasPacket(packet.getPacketId()) || relayManager.isDuplicate(packet.getPacketId())) {
+                log("Ignored duplicate packet " + packet.getPacketId());
                 return;
             }
-            log(msg);
-        }
-
-        @Override
-        public void onScanFailed(int errorCode) {
-            super.onScanFailed(errorCode);
-            isScanning = false;
-            if (errorCode == ScanCallback.SCAN_FAILED_ALREADY_STARTED) {
-                log("Scan failed: already started. Stopping and restarting scan.");
-                if (scanner != null) {
-                    scanner.stopScan(scanCallback);
-                }
-            } else {
-                log("Scan failed: " + errorCode);
+            if (relayManager.receivePacket(packet) == null) {
+                return;
             }
+            packetRepository.savePacket(packet);
+            log("Received and stored " + packet);
+            scheduleRelay(packet);
+        } catch (IllegalArgumentException exception) {
+            log("Ignored malformed BLE packet from " + deviceAddress + ": " + exception.getMessage());
         }
-    };
+    }
 
-    private void sendPacket() {
-        if (!isBluetoothReady()) {
+    private void scheduleRelay(EmergencyPacket receivedPacket) {
+        EmergencyPacket forwardedPacket = relayManager.decrementTtl(receivedPacket);
+        if (!relayManager.shouldRelay(forwardedPacket)) {
+            log("Packet " + receivedPacket.getPacketId() + " reached TTL 0; not relaying.");
             return;
         }
+        long delay = RELAY_MIN_DELAY_MS + random.nextInt((int) RELAY_DELAY_JITTER_MS + 1);
+        relayHandler.postDelayed(() -> advertise(forwardedPacket, "Relaying after " + delay + " ms"), delay);
+        log("Scheduled relay of " + forwardedPacket.getPacketId() + " with TTL=" + forwardedPacket.getTtl());
+    }
 
-        log("Sending test packet: " + buildTestPacket());
-        if (!isAdvertising) {
-            startAdvertising();
+    @Override
+    public void onScanFailure(String message) {
+        log(message);
+    }
+
+    @Override
+    public void onAdvertiseFailure(String message) {
+        log(message);
+    }
+
+    @Override
+    public void onAdvertiseSuccess() {
+        log("BLE advertising started.");
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_CODE) {
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    log("Bluetooth permission was denied.");
+                    return;
+                }
+            }
+            log("Bluetooth permissions granted.");
         }
     }
 
-    private String buildTestPacket() {
-        return "A12345|MEDICAL|TTL=5";
-    }
-
-    private boolean isBluetoothReady() {
-        if (bluetoothAdapter == null) {
-            log("Bluetooth adapter is null.");
-            return false;
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-            log("Missing BLUETOOTH_CONNECT permission.");
-            return false;
-        }
-        if (!bluetoothAdapter.isEnabled()) {
-            log("Bluetooth is disabled. Please enable Bluetooth.");
-            Toast.makeText(this, "Enable Bluetooth first.", Toast.LENGTH_SHORT).show();
-            return false;
-        }
-        return true;
+    @Override
+    protected void onDestroy() {
+        relayHandler.removeCallbacksAndMessages(null);
+        bleManager.stopScanning();
+        bleManager.stopAdvertising();
+        packetRepository.close();
+        super.onDestroy();
     }
 
     private void log(String message) {

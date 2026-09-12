@@ -8,3 +8,10 @@
 /captures
 .externalNativeBuild
 .cxx
+/.gradle-dist
+/.gradle-user-home
+/.android-user
+/.android-tools
+/.jdk
+/build-output.log
+/build-error.log

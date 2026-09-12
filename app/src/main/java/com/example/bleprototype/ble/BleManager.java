@@ -20,7 +20,6 @@ import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -37,11 +36,9 @@ public class BleManager {
     private Listener listener;
     private AdvertiseCallback advertiseCallback;
     private ScanCallback scanCallback;
-    private boolean isAdvertising = false;
-    private boolean isScanning = false;
 
     public interface Listener {
-        void onPacketDiscovered(String deviceAddress, String payload);
+        void onPacketDiscovered(String deviceAddress, byte[] payload);
         void onScanFailure(String message);
         void onAdvertiseFailure(String message);
         void onAdvertiseSuccess();
@@ -67,7 +64,7 @@ public class BleManager {
         return bluetoothAdapter.isEnabled();
     }
 
-    public void startAdvertising(String payload) {
+    public void startAdvertising(byte[] payload) {
         if (!isBluetoothReady()) {
             if (listener != null) {
                 listener.onAdvertiseFailure("Bluetooth is disabled");
@@ -83,16 +80,16 @@ public class BleManager {
             return;
         }
 
-        if (isAdvertising) {
+        if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
             if (listener != null) {
-                listener.onAdvertiseFailure("Advertising already started");
+                listener.onAdvertiseFailure("BLE advertising is not supported");
             }
             return;
         }
 
-        if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
+        if (payload == null || payload.length > 11) {
             if (listener != null) {
-                listener.onAdvertiseFailure("BLE advertising is not supported");
+                listener.onAdvertiseFailure("BLE advertisement payload must be at most 11 bytes");
             }
             return;
         }
@@ -104,6 +101,7 @@ public class BleManager {
             }
             return;
         }
+        stopAdvertising();
 
         AdvertiseSettings settings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
@@ -111,17 +109,17 @@ public class BleManager {
                 .setConnectable(false)
                 .build();
 
+        // Keep only one 128-bit service-data entry: adding another 128-bit
+        // service UUID would exceed the 31-byte legacy advertising budget.
         AdvertiseData data = new AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
-                .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-            .addServiceData(new ParcelUuid(PACKET_UUID), payload.getBytes(StandardCharsets.UTF_8))
+                .addServiceData(new ParcelUuid(PACKET_UUID), payload)
                 .build();
 
         advertiseCallback = new AdvertiseCallback() {
             @Override
             public void onStartSuccess(AdvertiseSettings settingsInEffect) {
                 super.onStartSuccess(settingsInEffect);
-                isAdvertising = true;
                 Log.d(TAG, "Advertising started");
                 if (listener != null) {
                     listener.onAdvertiseSuccess();
@@ -131,7 +129,6 @@ public class BleManager {
             @Override
             public void onStartFailure(int errorCode) {
                 super.onStartFailure(errorCode);
-                isAdvertising = false;
                 Log.e(TAG, "Advertising failed: " + errorCode);
                 if (listener != null) {
                     listener.onAdvertiseFailure("Advertising failed. Code=" + errorCode);
@@ -158,13 +155,6 @@ public class BleManager {
             return;
         }
 
-        if (isScanning) {
-            if (listener != null) {
-                listener.onScanFailure("Scanning already started");
-            }
-            return;
-        }
-
         scanner = bluetoothAdapter.getBluetoothLeScanner();
         if (scanner == null) {
             if (listener != null) {
@@ -172,9 +162,10 @@ public class BleManager {
             }
             return;
         }
+        stopScanning();
 
         ScanFilter filter = new ScanFilter.Builder()
-                .setServiceUuid(new ParcelUuid(SERVICE_UUID))
+                .setServiceData(new ParcelUuid(PACKET_UUID), null)
                 .build();
 
         ScanSettings settings = new ScanSettings.Builder()
@@ -190,22 +181,13 @@ public class BleManager {
                 super.onScanResult(callbackType, result);
                 BluetoothDevice device = result.getDevice();
                 if (device != null) {
-                    String payload = "";
+                    byte[] payload = null;
                     if (result.getScanRecord() != null && result.getScanRecord().getServiceData() != null) {
-                        byte[] data = result.getScanRecord().getServiceData().get(new ParcelUuid(PACKET_UUID));
-                        if (data != null) {
-                            payload = new String(data, StandardCharsets.UTF_8);
-                        }
+                        payload = result.getScanRecord().getServiceData().get(new ParcelUuid(PACKET_UUID));
                     }
 
-                    if (payload.isEmpty()) {
-                        Log.d(TAG, "Ignoring device without packet service data: "
-                                + device.getAddress());
-                        return;
-                    }
-
-                    Log.d(TAG, "Discovered device: " + device.getAddress() + " payload=" + payload);
-                    if (listener != null) {
+                    Log.d(TAG, "Discovered device: " + device.getAddress());
+                    if (listener != null && payload != null) {
                         listener.onPacketDiscovered(device.getAddress(), payload);
                     }
                 }
@@ -214,7 +196,6 @@ public class BleManager {
             @Override
             public void onScanFailed(int errorCode) {
                 super.onScanFailed(errorCode);
-                isScanning = false;
                 if (listener != null) {
                     listener.onScanFailure("Scan failed. Code=" + errorCode);
                 }
@@ -222,7 +203,6 @@ public class BleManager {
         };
 
         scanner.startScan(filters, settings, scanCallback);
-        isScanning = true;
     }
 
     public void stopScanning() {
@@ -233,7 +213,6 @@ public class BleManager {
             }
             scanner.stopScan(scanCallback);
             scanCallback = null;
-            isScanning = false;
         }
     }
 
@@ -245,7 +224,6 @@ public class BleManager {
             }
             advertiser.stopAdvertising(advertiseCallback);
             advertiseCallback = null;
-            isAdvertising = false;
         }
     }
 }
