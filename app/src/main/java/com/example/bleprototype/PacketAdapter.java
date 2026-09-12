@@ -80,11 +80,18 @@ public class PacketAdapter extends RecyclerView.Adapter<PacketAdapter.PacketView
     }
 
     private static int severityColor(String severity) {
-        return Color.BLACK;
+        if ("CRITICAL".equalsIgnoreCase(severity)) {
+            return Color.rgb(183, 28, 28);
+        }
+        if ("LOW".equalsIgnoreCase(severity)) {
+            return Color.rgb(19, 121, 91);
+        }
+        return Color.rgb(177, 96, 0);
     }
 
     private static int statusColor(String status) {
-        return Color.BLACK;
+        return "PENDING".equalsIgnoreCase(status)
+                ? Color.rgb(177, 96, 0) : Color.rgb(19, 121, 91);
     }
 
     static class PacketViewHolder extends RecyclerView.ViewHolder {

@@ -6,12 +6,16 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -24,6 +28,7 @@ import com.example.bleprototype.storage.PacketRepository;
 
 public class GattReportActivity extends AppCompatActivity {
     private static final int LOCATION_REQUEST_CODE = 7001;
+    private static final long LOCATION_TIMEOUT_MS = 10000L;
     private final PacketManager packetManager = new PacketManager();
     private EditText descriptionInput;
     private EditText reporterInput;
@@ -64,31 +69,93 @@ public class GattReportActivity extends AppCompatActivity {
     }
 
     private ArrayAdapter<String> createAdapter(String[] values) {
-        return new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, values);
+        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, values) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(0xFF000000);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(0xFFFFFFFF);
+                return view;
+            }
+        };
     }
 
     private void captureLocation() {
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (!hasLocationPermission()) {
             ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, LOCATION_REQUEST_CODE);
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION}, LOCATION_REQUEST_CODE);
             return;
         }
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        Location best = null;
-        if (locationManager != null) {
-            best = lastKnownLocation(locationManager, LocationManager.GPS_PROVIDER);
-            Location network = lastKnownLocation(locationManager, LocationManager.NETWORK_PROVIDER);
-            if (best == null || (network != null && network.getTime() > best.getTime())) {
-                best = network;
-            }
-        }
-        if (best == null) {
-            locationView.setText("Location: unavailable. You can enter it in Other information.");
+        if (locationManager == null) {
+            showLocationUnavailable();
             return;
         }
-        location = String.format(java.util.Locale.US, "%.6f, %.6f", best.getLatitude(), best.getLongitude());
+
+        Location best = lastKnownLocation(locationManager, LocationManager.GPS_PROVIDER);
+        Location network = lastKnownLocation(locationManager, LocationManager.NETWORK_PROVIDER);
+        if (best == null || (network != null && network.getTime() > best.getTime())) {
+            best = network;
+        }
+        if (best != null) {
+            setLocation(best);
+            return;
+        }
+
+        locationView.setText("Location: getting a current fix...");
+        final Location[] current = {null};
+        android.location.LocationListener listener = new android.location.LocationListener() {
+            @Override
+            public void onLocationChanged(@NonNull Location newLocation) {
+                if (current[0] == null || newLocation.getAccuracy() < current[0].getAccuracy()) {
+                    current[0] = newLocation;
+                    setLocation(newLocation);
+                }
+            }
+        };
+        try {
+            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0L, 0f, listener);
+            }
+            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0L, 0f, listener);
+            }
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    locationManager.removeUpdates(listener);
+                } catch (SecurityException ignored) {
+                    // Permission may have been revoked while waiting.
+                }
+                if (current[0] == null) {
+                    showLocationUnavailable();
+                }
+            }, LOCATION_TIMEOUT_MS);
+        } catch (SecurityException exception) {
+            showLocationUnavailable();
+        }
+    }
+
+    private boolean hasLocationPermission() {
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED
+                || ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void setLocation(Location current) {
+        location = String.format(java.util.Locale.US, "%.6f, %.6f", current.getLatitude(), current.getLongitude());
         locationView.setText("Location: " + location);
+    }
+
+    private void showLocationUnavailable() {
+        locationView.setText("Location: unavailable. Enable location services or enter it in Other information.");
     }
 
     private Location lastKnownLocation(LocationManager manager, String provider) {
@@ -145,8 +212,7 @@ public class GattReportActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == LOCATION_REQUEST_CODE && grantResults.length > 0
-                && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        if (requestCode == LOCATION_REQUEST_CODE && hasLocationPermission()) {
             captureLocation();
         }
     }

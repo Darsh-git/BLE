@@ -82,22 +82,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         recyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
         recyclerView.setAdapter(packetAdapter);
 
-        BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
-        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
-        bleManager = new BleManager(this, adapter);
-        sharedBleManager = bleManager;
-        bleManager.setListener(this);
-        bleManager.startGattServer();
-
         advertisingButton = findViewById(R.id.btn_start_advertising);
         Button scanningButton = findViewById(R.id.btn_start_scanning);
         Button allPackets = findViewById(R.id.btn_filter_all);
         Button pendingPackets = findViewById(R.id.btn_filter_pending);
         Button removeExpired = findViewById(R.id.btn_remove_expired);
-        Button newGattReport = findViewById(R.id.btn_new_gatt_report);
         advertisingButton.setOnClickListener(v -> toggleAdvertising());
         scanningButton.setOnClickListener(v -> toggleScanning(scanningButton));
-        newGattReport.setOnClickListener(v -> openGattReport());
         allPackets.setOnClickListener(v -> {
             pendingOnly = false;
             refreshPackets();
@@ -114,11 +105,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
             });
         }));
 
-        requestNeededPermissions();
+        if (requestNeededPermissions()) {
+            initializeBleManager();
+        }
         refreshPackets();
     }
 
-    private void requestNeededPermissions() {
+    private boolean requestNeededPermissions() {
         List<String> missing = new ArrayList<>();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             addIfMissing(missing, Manifest.permission.BLUETOOTH_SCAN);
@@ -129,7 +122,21 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         }
         if (!missing.isEmpty()) {
             ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), REQUEST_CODE);
+            return false;
         }
+        return true;
+    }
+
+    private void initializeBleManager() {
+        if (bleManager != null) {
+            return;
+        }
+        BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        bleManager = new BleManager(this, adapter);
+        sharedBleManager = bleManager;
+        bleManager.setListener(this);
+        bleManager.startGattServer();
     }
 
     private void addIfMissing(List<String> permissions, String permission) {
@@ -197,6 +204,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
 
     private void toggleScanning(Button scanningButton) {
         if (scanning) {
+            if (bleManager == null) {
+                scanning = false;
+                return;
+            }
             bleManager.stopScanning();
             scanning = false;
             scanningButton.setText("Start Scanning");
@@ -205,7 +216,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
             return;
         }
 
-        if (bleManager.isBluetoothReady()) {
+        if (bleManager != null && bleManager.isBluetoothReady()) {
             bleManager.startScanning();
             scanning = true;
             scanningButton.setText("Stop Scanning");
@@ -217,19 +228,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     private void toggleAdvertising() {
-        if (advertising) {
-            bleManager.stopAdvertising();
-            advertising = false;
-            advertisingButton.setText("Send Packet");
-            connectionStatusView.setText("Bluetooth ready • Monitoring idle");
-            log("Advertising stopped.");
-            return;
-        }
-        advertiseNewPacket();
+        openGattReport();
     }
 
     private void advertiseNewPacket() {
-        if (!bleManager.isBluetoothReady()) {
+        if (bleManager == null || !bleManager.isBluetoothReady()) {
             log("Bluetooth is unavailable, disabled, or not permitted.");
             return;
         }
@@ -340,7 +343,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
                     return;
                 }
             }
-            bleManager.startGattServer();
+            initializeBleManager();
             log("Bluetooth permissions granted.");
         }
     }
@@ -348,9 +351,11 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     @Override
     protected void onDestroy() {
         relayHandler.removeCallbacksAndMessages(null);
-        bleManager.stopScanning();
-        bleManager.stopAdvertising();
-        bleManager.stopGattServer();
+        if (bleManager != null) {
+            bleManager.stopScanning();
+            bleManager.stopAdvertising();
+            bleManager.stopGattServer();
+        }
         if (sharedBleManager == bleManager) {
             sharedBleManager = null;
         }
@@ -368,7 +373,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     private void openGattReport() {
-        if (!bleManager.isBluetoothReady()) {
+        if (bleManager == null || !bleManager.isBluetoothReady()) {
             Toast.makeText(this, "Bluetooth is unavailable or not permitted", Toast.LENGTH_LONG).show();
             return;
         }

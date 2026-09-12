@@ -15,7 +15,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="New GATT report"
-            android:textColor="#17212B"
+            android:textColor="#000000"
             android:textSize="26sp"
             android:textStyle="bold" />
 
@@ -24,7 +24,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
             android:text="Send a detailed report to nearby connected phones."
-            android:textColor="#52606D"
+            android:textColor="#000000"
             android:textSize="14sp" />
 
         <TextView
@@ -32,7 +32,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
             android:text="Report type and severity"
-            android:textColor="#17212B"
+            android:textColor="#000000"
             android:textStyle="bold" />
 
         <LinearLayout
@@ -45,6 +45,7 @@
                 android:id="@+id/report_type"
                 android:layout_width="0dp"
                 android:layout_height="52dp"
+                android:popupBackground="#000000"
                 android:layout_weight="1" />
 
             <Spinner
@@ -52,6 +53,7 @@
                 android:layout_width="0dp"
                 android:layout_height="52dp"
                 android:layout_marginStart="8dp"
+                android:popupBackground="#000000"
                 android:layout_weight="1" />
         </LinearLayout>
 
@@ -62,6 +64,8 @@
             android:layout_marginTop="12dp"
             android:gravity="top"
             android:hint="What happened? (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="textCapSentences|textMultiLine"
             android:minLines="3" />
 
@@ -70,6 +74,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Your name (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="textPersonName" />
 
         <EditText
@@ -77,6 +83,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Contact information (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="text" />
 
         <EditText
@@ -84,6 +92,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="People affected or needing help (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="text" />
 
         <EditText
@@ -91,6 +101,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="Assistance needed (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="textCapSentences" />
 
         <EditText
@@ -99,6 +111,8 @@
             android:layout_height="wrap_content"
             android:gravity="top"
             android:hint="Other information (optional)"
+            android:textColor="#000000"
+            android:textColorHint="#52606D"
             android:inputType="textCapSentences|textMultiLine"
             android:minLines="2" />
 
@@ -108,13 +122,14 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="Location: not captured"
-            android:textColor="#17212B"
+            android:textColor="#000000"
             android:textSize="14sp" />
 
         <Button
             android:id="@+id/report_location_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textColor="#000000"
             android:text="Use phone location" />
 
         <Button
@@ -122,12 +137,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
+            android:textColor="#000000"
             android:text="Send report over GATT" />
 
         <Button
             android:id="@+id/report_cancel_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textColor="#000000"
             android:text="Cancel" />
     </LinearLayout>
 </ScrollView>
