@@ -40,7 +40,6 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "BLEPrototype";
     private static final UUID SERVICE_UUID = UUID.fromString("8f8b7d9c-4c2c-4704-b09b-4c7b1b6e82d7");
     private static final UUID PACKET_UUID = UUID.fromString("b178c1d0-9bf7-4bc0-b202-5ba6f7d3f6d1");
-    private static final int MANUFACTURER_ID = 0xFFFF;
 
     private static final int REQUEST_CODE = 1001;
 
@@ -112,11 +111,6 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        if (isAdvertising) {
-            log("Advertising already started.");
-            return;
-        }
-
         if (!bluetoothAdapter.isMultipleAdvertisementSupported()) {
             log("BLE advertising not supported on this device.");
             return;
@@ -137,7 +131,7 @@ public class MainActivity extends AppCompatActivity {
         AdvertiseData data = new AdvertiseData.Builder()
                 .setIncludeDeviceName(false)
                 .addServiceUuid(new ParcelUuid(SERVICE_UUID))
-                .addManufacturerData(MANUFACTURER_ID, buildTestPacket().getBytes(StandardCharsets.UTF_8))
+            .addServiceData(new ParcelUuid(PACKET_UUID), buildTestPacket().getBytes(StandardCharsets.UTF_8))
                 .build();
 
         advertiser.startAdvertising(settings, data, advertiseCallback);
@@ -209,13 +203,10 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
             String msg = "Found device: " + device.getAddress();
-            if (record != null) {
-                byte[] data = record.getManufacturerSpecificData(MANUFACTURER_ID);
-                if (data != null && data.length > 0) {
+            if (record != null && record.getServiceData() != null) {
+                byte[] data = record.getServiceData().get(new ParcelUuid(PACKET_UUID));
+                if (data != null) {
                     msg += " | payload=" + new String(data, StandardCharsets.UTF_8);
-                } else {
-                    log("Ignoring device without packet service data: " + device.getAddress());
-                    return;
                 }
             } else {
                 log("Ignoring device without scan record: " + device.getAddress());
@@ -259,14 +250,14 @@ public class MainActivity extends AppCompatActivity {
             log("Bluetooth adapter is null.");
             return false;
         }
-        if (!bluetoothAdapter.isEnabled()) {
-            log("Bluetooth is disabled. Please enable Bluetooth.");
-            Toast.makeText(this, "Enable Bluetooth first.", Toast.LENGTH_SHORT).show();
-            return false;
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
             log("Missing BLUETOOTH_CONNECT permission.");
+            return false;
+        }
+        if (!bluetoothAdapter.isEnabled()) {
+            log("Bluetooth is disabled. Please enable Bluetooth.");
+            Toast.makeText(this, "Enable Bluetooth first.", Toast.LENGTH_SHORT).show();
             return false;
         }
         return true;
