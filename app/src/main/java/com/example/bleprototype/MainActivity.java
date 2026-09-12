@@ -87,10 +87,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         Button allPackets = findViewById(R.id.btn_filter_all);
         Button pendingPackets = findViewById(R.id.btn_filter_pending);
         Button removeExpired = findViewById(R.id.btn_remove_expired);
-        Button newGattReport = findViewById(R.id.btn_new_gatt_report);
         advertisingButton.setOnClickListener(v -> toggleAdvertising());
         scanningButton.setOnClickListener(v -> toggleScanning(scanningButton));
-        newGattReport.setOnClickListener(v -> openGattReport());
         allPackets.setOnClickListener(v -> {
             pendingOnly = false;
             refreshPackets();
@@ -230,19 +228,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     }
 
     private void toggleAdvertising() {
-        if (advertising) {
-            if (bleManager == null) {
-                advertising = false;
-                return;
-            }
-            bleManager.stopAdvertising();
-            advertising = false;
-            advertisingButton.setText("Send Packet");
-            connectionStatusView.setText("Bluetooth ready • Monitoring idle");
-            log("Advertising stopped.");
-            return;
-        }
-        advertiseNewPacket();
+        openGattReport();
     }
 
     private void advertiseNewPacket() {
