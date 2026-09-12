@@ -12,6 +12,8 @@ import android.widget.EditText;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -64,7 +66,21 @@ public class GattReportActivity extends AppCompatActivity {
     }
 
     private ArrayAdapter<String> createAdapter(String[] values) {
-        return new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, values);
+        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, values) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(0xFFFFFFFF);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(0xFFFFFFFF);
+                return view;
+            }
+        };
     }
 
     private void captureLocation() {
