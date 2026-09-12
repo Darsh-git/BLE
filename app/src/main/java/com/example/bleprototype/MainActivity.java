@@ -15,6 +15,8 @@ import android.widget.EditText;
 import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -54,7 +56,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private TextView connectionStatusView;
     private Spinner packetTypeInput;
     private Spinner packetSeverityInput;
+    private Button advertisingButton;
     private boolean pendingOnly;
+    private boolean scanning;
+    private boolean advertising;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,11 +70,9 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         connectionStatusView = findViewById(R.id.tv_connection_status);
         packetTypeInput = findViewById(R.id.et_packet_type);
         packetSeverityInput = findViewById(R.id.et_packet_severity);
-        packetTypeInput.setAdapter(new ArrayAdapter<>(this,
-            android.R.layout.simple_spinner_dropdown_item,
+        packetTypeInput.setAdapter(createSpinnerAdapter(
             new String[]{"MEDICAL", "FIRE", "FLOOD", "ACCIDENT", "EARTHQUAKE", "SHELTER", "OTHER"}));
-        packetSeverityInput.setAdapter(new ArrayAdapter<>(this,
-            android.R.layout.simple_spinner_dropdown_item,
+        packetSeverityInput.setAdapter(createSpinnerAdapter(
             new String[]{"LOW", "MEDIUM", "CRITICAL"}));
         packetRepository = new PacketRepository(this);
 
@@ -83,13 +86,13 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         bleManager = new BleManager(this, adapter);
         bleManager.setListener(this);
 
-        Button startAdvertising = findViewById(R.id.btn_start_advertising);
-        Button startScanning = findViewById(R.id.btn_start_scanning);
+        advertisingButton = findViewById(R.id.btn_start_advertising);
+        Button scanningButton = findViewById(R.id.btn_start_scanning);
         Button allPackets = findViewById(R.id.btn_filter_all);
         Button pendingPackets = findViewById(R.id.btn_filter_pending);
         Button removeExpired = findViewById(R.id.btn_remove_expired);
-        startAdvertising.setOnClickListener(v -> advertiseNewPacket());
-        startScanning.setOnClickListener(v -> startScanning());
+        advertisingButton.setOnClickListener(v -> toggleAdvertising());
+        scanningButton.setOnClickListener(v -> toggleScanning(scanningButton));
         allPackets.setOnClickListener(v -> {
             pendingOnly = false;
             refreshPackets();
@@ -130,14 +133,55 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         }
     }
 
-    private void startScanning() {
+    private ArrayAdapter<String> createSpinnerAdapter(String[] values) {
+        return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, values) {
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getView(position, convertView, parent);
+                view.setTextColor(0xFF17212B);
+                return view;
+            }
+
+            @Override
+            public View getDropDownView(int position, View convertView, ViewGroup parent) {
+                TextView view = (TextView) super.getDropDownView(position, convertView, parent);
+                view.setTextColor(0xFF17212B);
+                return view;
+            }
+        };
+    }
+
+    private void toggleScanning(Button scanningButton) {
+        if (scanning) {
+            bleManager.stopScanning();
+            scanning = false;
+            scanningButton.setText("Start Scanning");
+            connectionStatusView.setText("Bluetooth ready • Monitoring idle");
+            log("Scanning stopped.");
+            return;
+        }
+
         if (bleManager.isBluetoothReady()) {
             bleManager.startScanning();
+            scanning = true;
+            scanningButton.setText("Stop Scanning");
             connectionStatusView.setText("Bluetooth ready • Scanning for packets");
             log("Scanning for emergency packets.");
         } else {
             log("Bluetooth is unavailable, disabled, or not permitted.");
         }
+    }
+
+    private void toggleAdvertising() {
+        if (advertising) {
+            bleManager.stopAdvertising();
+            advertising = false;
+            advertisingButton.setText("Send Packet");
+            connectionStatusView.setText("Bluetooth ready • Monitoring idle");
+            log("Advertising stopped.");
+            return;
+        }
+        advertiseNewPacket();
     }
 
     private void advertiseNewPacket() {
@@ -172,6 +216,8 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private void advertise(EmergencyPacket packet, String action) {
         try {
             bleManager.startAdvertising(packetManager.encodeForAdvertisement(packet));
+            advertising = true;
+            advertisingButton.setText("Stop Advertising");
             log(action + " " + packet);
         } catch (IllegalArgumentException exception) {
             log("Could not advertise packet: " + exception.getMessage());
@@ -218,16 +264,21 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
 
     @Override
     public void onScanFailure(String message) {
+        scanning = false;
         log(message);
     }
 
     @Override
     public void onAdvertiseFailure(String message) {
+        advertising = false;
+        advertisingButton.setText("Send Packet");
         log(message);
     }
 
     @Override
     public void onAdvertiseSuccess() {
+        advertising = true;
+        advertisingButton.setText("Stop Advertising");
         log("BLE advertising started.");
     }
 
