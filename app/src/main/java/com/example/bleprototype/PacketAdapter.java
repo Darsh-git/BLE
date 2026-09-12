@@ -5,6 +5,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
+import android.widget.Button;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
@@ -21,9 +22,19 @@ public class PacketAdapter extends RecyclerView.Adapter<PacketAdapter.PacketView
             new SimpleDateFormat("HH:mm", Locale.US);
 
     private List<EmergencyPacket> packets;
+    private final OnPacketClickListener listener;
+
+    public interface OnPacketClickListener {
+        void onViewReport(EmergencyPacket packet);
+    }
 
     public PacketAdapter(List<EmergencyPacket> packets) {
+        this(packets, null);
+    }
+
+    public PacketAdapter(List<EmergencyPacket> packets, OnPacketClickListener listener) {
         this.packets = packets;
+        this.listener = listener;
     }
 
     public void setPackets(List<EmergencyPacket> packets) {
@@ -50,6 +61,11 @@ public class PacketAdapter extends RecyclerView.Adapter<PacketAdapter.PacketView
                 + "  •  Received: " + formatTime(packet.getReceivedAt()));
         holder.location.setText("Location: " + packet.getLocation());
         holder.status.setText("Status: " + packet.getStatus());
+        holder.viewReport.setOnClickListener(v -> {
+            if (listener != null) {
+                listener.onViewReport(packet);
+            }
+        });
         holder.type.setTextColor(severityColor(severity));
         holder.status.setTextColor(statusColor(packet.getStatus()));
     }
@@ -84,6 +100,7 @@ public class PacketAdapter extends RecyclerView.Adapter<PacketAdapter.PacketView
         final TextView details;
         final TextView location;
         final TextView status;
+        final Button viewReport;
 
         PacketViewHolder(@NonNull View itemView) {
             super(itemView);
@@ -92,6 +109,7 @@ public class PacketAdapter extends RecyclerView.Adapter<PacketAdapter.PacketView
             details = itemView.findViewById(R.id.tvDescription);
             location = itemView.findViewById(R.id.tvLocation);
             status = itemView.findViewById(R.id.tvStatus);
+            viewReport = itemView.findViewById(R.id.btn_view_report);
         }
     }
 }

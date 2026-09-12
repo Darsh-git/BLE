@@ -23,6 +23,13 @@
         android:textColor="#52606D"
         android:textSize="14sp" />
 
+    <Button
+        android:id="@+id/btn_new_gatt_report"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="Create GATT report" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

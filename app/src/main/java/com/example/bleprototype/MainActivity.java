@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
     private final Handler relayHandler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
     private final ExecutorService databaseExecutor = Executors.newSingleThreadExecutor();
+    private static BleManager sharedBleManager;
 
     private BleManager bleManager;
     private PacketRepository packetRepository;
@@ -77,13 +78,14 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         packetRepository = new PacketRepository(this);
 
         androidx.recyclerview.widget.RecyclerView recyclerView = findViewById(R.id.recyclerView);
-        packetAdapter = new PacketAdapter(new ArrayList<>());
+        packetAdapter = new PacketAdapter(new ArrayList<>(), this::showFullReport);
         recyclerView.setLayoutManager(new androidx.recyclerview.widget.LinearLayoutManager(this));
         recyclerView.setAdapter(packetAdapter);
 
         BluetoothManager manager = (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
         BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
         bleManager = new BleManager(this, adapter);
+        sharedBleManager = bleManager;
         bleManager.setListener(this);
         bleManager.startGattServer();
 
@@ -92,8 +94,10 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         Button allPackets = findViewById(R.id.btn_filter_all);
         Button pendingPackets = findViewById(R.id.btn_filter_pending);
         Button removeExpired = findViewById(R.id.btn_remove_expired);
+        Button newGattReport = findViewById(R.id.btn_new_gatt_report);
         advertisingButton.setOnClickListener(v -> toggleAdvertising());
         scanningButton.setOnClickListener(v -> toggleScanning(scanningButton));
+        newGattReport.setOnClickListener(v -> openGattReport());
         allPackets.setOnClickListener(v -> {
             pendingOnly = false;
             refreshPackets();
@@ -347,9 +351,33 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
         bleManager.stopScanning();
         bleManager.stopAdvertising();
         bleManager.stopGattServer();
+        if (sharedBleManager == bleManager) {
+            sharedBleManager = null;
+        }
         databaseExecutor.shutdown();
         packetRepository.close();
         super.onDestroy();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (packetAdapter != null) {
+            refreshPackets();
+        }
+    }
+
+    private void openGattReport() {
+        if (!bleManager.isBluetoothReady()) {
+            Toast.makeText(this, "Bluetooth is unavailable or not permitted", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!scanning) {
+            bleManager.startScanning();
+            scanning = true;
+            connectionStatusView.setText("Bluetooth ready • Discovering GATT peers");
+        }
+        startActivity(new android.content.Intent(this, GattReportActivity.class));
     }
 
     private void refreshPackets() {
@@ -365,5 +393,40 @@ public class MainActivity extends AppCompatActivity implements BleManager.Listen
 
     private void log(String message) {
         Log.d(TAG, message);
+    }
+
+    private void showFullReport(EmergencyPacket packet) {
+        StringBuilder report = new StringBuilder();
+        appendReportField(report, "Packet ID", packet.getPacketId());
+        appendReportField(report, "Type", packet.getType());
+        appendReportField(report, "Severity", packet.getSeverity());
+        appendReportField(report, "Description", packet.getDescription());
+        appendReportField(report, "Location", packet.getLocation());
+        appendReportField(report, "Reporter", packet.getReporterName());
+        appendReportField(report, "Contact", packet.getContactInfo());
+        appendReportField(report, "People affected", packet.getPeopleAffected());
+        appendReportField(report, "Assistance needed", packet.getAssistanceNeeded());
+        appendReportField(report, "Other information", packet.getNotes());
+        appendReportField(report, "Source device", packet.getSourceDevice());
+        appendReportField(report, "TTL", String.valueOf(packet.getTtl()));
+        appendReportField(report, "Relay count", String.valueOf(packet.getRelayCount()));
+        appendReportField(report, "Status", packet.getStatus());
+        appendReportField(report, "Created", String.valueOf(packet.getCreatedAt()));
+        appendReportField(report, "Received", String.valueOf(packet.getReceivedAt()));
+        new androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Full report")
+                .setMessage(report.toString())
+                .setPositiveButton("Close", null)
+                .show();
+    }
+
+    private void appendReportField(StringBuilder report, String label, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            report.append(label).append(": ").append(value).append("\n\n");
+        }
+    }
+
+    public static BleManager getSharedBleManager() {
+        return sharedBleManager;
     }
 }

@@ -70,6 +70,12 @@ public class PacketManager {
             message.put("source_device", packet.getSourceDevice());
             message.put("relay_count", packet.getRelayCount());
             message.put("status", packet.getStatus());
+            message.put("description", packet.getDescription());
+            message.put("reporter_name", packet.getReporterName());
+            message.put("contact_info", packet.getContactInfo());
+            message.put("people_affected", packet.getPeopleAffected());
+            message.put("assistance_needed", packet.getAssistanceNeeded());
+            message.put("notes", packet.getNotes());
             message.put("kind", "packet");
         } catch (Exception exception) {
             throw new IllegalArgumentException("Could not serialize packet message", exception);
@@ -87,7 +93,7 @@ public class PacketManager {
         String json = new String(payload, StandardCharsets.UTF_8);
         try {
             JSONObject object = new JSONObject(json);
-            return new EmergencyPacket(
+                EmergencyPacket packet = new EmergencyPacket(
                     object.optString("packet_id", UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.US)),
                     object.optString("type", "OTHER"),
                     object.optString("severity", "MEDIUM"),
@@ -99,6 +105,13 @@ public class PacketManager {
                     object.optInt("relay_count", 0),
                     object.optString("status", "PENDING")
             );
+                    return packet.withReportDetails(
+                        object.optString("description", ""),
+                        object.optString("reporter_name", ""),
+                        object.optString("contact_info", ""),
+                        object.optString("people_affected", ""),
+                        object.optString("assistance_needed", ""),
+                        object.optString("notes", ""));
         } catch (Exception exception) {
             throw new IllegalArgumentException("Invalid GATT transport packet", exception);
         }
